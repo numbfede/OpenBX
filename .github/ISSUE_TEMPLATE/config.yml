@@ -1,0 +1,5 @@
+blank_issues_enabled: true
+contact_links:
+  - name: Tweak documentation
+    url: https://github.com/numbfede/OpenBX/blob/main/docs/tweaks.md
+    about: Read which Windows settings OpenBX is allowed to change before opening an issue.

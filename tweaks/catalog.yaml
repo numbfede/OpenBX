@@ -1,0 +1,91 @@
+# Human-readable catalog for contributors.
+# Runtime copy currently ships in Italian inside src-tauri/src/tweaks/catalog.rs.
+# Keep this file, docs/tweaks.md, and the Rust modules in sync.
+
+tweaks:
+  - id: game_mode
+    category: gaming
+    title: Optimize Windows for games
+    risk: low
+    reversible: true
+    safeModeAllowed: true
+    source: https://learn.microsoft.com/windows/uwp/gaming/use-the-game-mode-api
+
+  - id: game_dvr
+    category: gaming
+    title: Reduce background recording
+    risk: low
+    reversible: true
+    safeModeAllowed: true
+    source: https://support.xbox.com/help/games-apps/game-bar/game-bar-overview
+
+  - id: gpu_scheduling
+    category: performance
+    title: Use the GPU more directly
+    risk: low
+    reversible: true
+    safeModeAllowed: true
+    source: https://devblogs.microsoft.com/directx/hardware-accelerated-gpu-scheduling/
+    notes: Hidden when Windows build < 19041 or HwSchMode is 0.
+
+  - id: power_plan
+    category: performance
+    title: Give more power to performance
+    risk: low
+    reversible: true
+    safeModeAllowed: true
+    source: https://learn.microsoft.com/windows-hardware/design/device-experiences/powercfg-command-line-options
+    notes: Skipped on laptop battery.
+
+  - id: visual_animations
+    category: performance
+    title: Simplify Windows animations
+    risk: low
+    reversible: true
+    safeModeAllowed: true
+    source: https://learn.microsoft.com/windows/win32/api/winuser/nf-winuser-systemparametersinfow
+
+  - id: transparency
+    category: windows
+    title: Reduce transparency effects
+    risk: low
+    reversible: true
+    safeModeAllowed: true
+    source: https://support.microsoft.com/windows/personalize-your-desktop-background-9394b71b-cc1f-53d9-8182-707e10592f14
+
+  - id: ntfs_last_access
+    category: windows
+    title: Optimize file handling
+    risk: low
+    reversible: true
+    safeModeAllowed: true
+    source: https://learn.microsoft.com/windows-server/administration/windows-commands/fsutil-behavior
+
+  - id: startup_delay
+    category: startup
+    title: Start apps without the extra wait
+    risk: low
+    reversible: true
+    safeModeAllowed: true
+    source: https://support.microsoft.com/windows/configure-startup-applications-in-windows-115a420a-0b9e63b6-5b57-7b0b-93d2-5ab01fb9b808
+
+  - id: focus_assist
+    category: memory
+    title: Fewer notifications while you use the PC
+    risk: low
+    reversible: true
+    safeModeAllowed: true
+    source: https://support.microsoft.com/windows/change-notification-and-quick-settings-in-windows-0b9e63b6-5b57-7b0b-93d2-5ab01fb9b808
+
+  - id: consumer_tips
+    category: memory
+    title: Remove suggestions that waste resources
+    risk: low
+    reversible: true
+    safeModeAllowed: true
+    source: https://support.microsoft.com/windows/get-help-and-tips-in-the-tips-app-f7e3d1d0-6d57-0b8a-2b8e-7b4a5e2d7d2f
+
+forbidden:
+  - network: DHCP, IP, Gateway, DNS, TCP, NIC
+  - placebo: HPET, timer resolution, pagefile, core parking, BCDEdit
+  - dangerous: Defender, Windows Update, service massacre

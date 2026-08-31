@@ -1,0 +1,31 @@
+[package]
+name = "openbx"
+version = "0.1.0"
+description = "OpenBX — human-first Windows optimizer"
+authors = ["OpenBX"]
+edition = "2021"
+default-run = "openbx"
+
+[lib]
+name = "openbx_lib"
+crate-type = ["lib", "cdylib", "staticlib"]
+
+[build-dependencies]
+tauri-build = { version = "2", features = [] }
+
+[dependencies]
+tauri = { version = "2", features = ["tray-icon"] }
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+winreg = "0.55"
+sysinfo = "0.33"
+dirs = "6"
+chrono = { version = "0.4", features = ["clock", "serde"] }
+uuid = { version = "1", features = ["v4"] }
+thiserror = "2"
+
+[target.'cfg(windows)'.dependencies]
+is_elevated = "0.1"
+
+[dev-dependencies]
+serde_json = "1"

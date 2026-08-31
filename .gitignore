@@ -1,0 +1,16 @@
+node_modules
+dist
+dist-ssr
+*.local
+.DS_Store
+Thumbs.db
+src-tauri/target
+src-tauri/gen
+src-tauri/WixTools
+.idea
+.vscode
+*.log
+.env
+.env.*
+tsconfig.tsbuildinfo
+
