@@ -1,5 +1,3 @@
-use std::process::Command;
-
 use crate::error::AppResult;
 use crate::model::{
     CategoryId, RiskLevel, SnapshotValue, SourceRef, SystemInfo, TweakSnapshot, TweakTechnical,
@@ -305,8 +303,8 @@ impl TweakModule for PowerPlan {
         if ctx.is_laptop && !ctx.on_ac_power {
             return DetectResult::skip("Sul portatile a batteria non forziamo il piano prestazioni.");
         }
-        let active = active_power_guid().unwrap_or_default();
-        DetectResult::current(is_performance_plan(&active), active)
+        let (guid, label) = active_power_scheme();
+        DetectResult::current(is_performance_plan(guid.as_deref().unwrap_or(""), &label), guid.unwrap_or_default())
     }
     fn apply(&self, _ctx: &SystemInfo, snapshot: &mut TweakSnapshot) -> AppResult<()> {
         snapshot.values.push(SnapshotValue {
@@ -553,14 +551,25 @@ impl TweakModule for ConsumerTips {
     }
 }
 
+fn active_power_scheme() -> (Option<String>, String) {
+    let output = crate::win_cmd::command("powercfg")
+        .args(["/getactivescheme"])
+        .output()
+        .ok();
+    let text = output
+        .and_then(|item| String::from_utf8(item.stdout).ok())
+        .unwrap_or_default();
+    (extract_guid(&text), text)
+}
+
 fn active_power_guid() -> Option<String> {
-    let output = Command::new("powercfg").args(["/getactivescheme"]).output().ok()?;
-    let text = String::from_utf8_lossy(&output.stdout);
-    extract_guid(&text)
+    active_power_scheme().0
 }
 
 fn set_power_guid(guid: &str) -> AppResult<()> {
-    let status = Command::new("powercfg").args(["/setactive", guid]).status()?;
+    let status = crate::win_cmd::command("powercfg")
+        .args(["/setactive", guid])
+        .status()?;
     if status.success() {
         Ok(())
     } else {
@@ -597,29 +606,32 @@ fn is_guid(value: &str) -> bool {
 }
 
 fn set_performance_plan() -> AppResult<()> {
-    if set_power_guid(ULTIMATE).is_ok() && is_performance_plan(&active_power_guid().unwrap_or_default()) {
-        return Ok(());
+    if set_power_guid(ULTIMATE).is_ok() {
+        let (guid, label) = active_power_scheme();
+        if is_performance_plan(guid.as_deref().unwrap_or(""), &label) {
+            return Ok(());
+        }
     }
-    let output = Command::new("powercfg")
+    let output = crate::win_cmd::command("powercfg")
         .args(["-duplicatescheme", ULTIMATE])
         .output()
         .map_err(|_| crate::error::AppError::AccessDenied)?;
     if let Some(guid) = extract_guid(&String::from_utf8_lossy(&output.stdout)) {
-        if set_power_guid(&guid).is_ok() && is_performance_plan(&active_power_guid().unwrap_or_default()) {
-            return Ok(());
+        if set_power_guid(&guid).is_ok() {
+            let (active, label) = active_power_scheme();
+            if is_performance_plan(active.as_deref().unwrap_or(""), &label) {
+                return Ok(());
+            }
         }
     }
     set_power_guid(HIGH_PERFORMANCE)
 }
 
-fn is_performance_plan(active: &str) -> bool {
+fn is_performance_plan(active: &str, scheme_text: &str) -> bool {
     if guid_eq(active, HIGH_PERFORMANCE) || guid_eq(active, ULTIMATE) {
         return true;
     }
-    let Some(output) = Command::new("powercfg").args(["/getactivescheme"]).output().ok() else {
-        return false;
-    };
-    let text = String::from_utf8_lossy(&output.stdout).to_ascii_lowercase();
+    let text = scheme_text.to_ascii_lowercase();
     text.contains("ultimate")
         || text.contains("high performance")
         || text.contains("prestazioni ultimate")

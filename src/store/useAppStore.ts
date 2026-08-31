@@ -45,6 +45,8 @@ interface AppState {
   scan: ScanResult | null;
   backups: BackupSummary[];
   games: GameEntry[];
+  gamesLoading: boolean;
+  gamesScanned: boolean;
   selectedTweak: TweakState | null;
   pendingBackupId: string | null;
   pendingOptimizeIds?: string[];
@@ -105,6 +107,8 @@ export const useAppStore = create<AppState>((set, get) => ({
   scan: null,
   backups: [],
   games: [],
+  gamesLoading: false,
+  gamesScanned: false,
   selectedTweak: null,
   pendingBackupId: null,
   pendingOptimizeIds: undefined,
@@ -300,8 +304,21 @@ export const useAppStore = create<AppState>((set, get) => ({
   },
 
   refreshGames: async () => {
-    const games = await api.scanGames();
-    set({ games });
+    set({ gamesLoading: true });
+    try {
+      const games = await safe(() => api.scanGames());
+      set({ games, gamesLoading: false, gamesScanned: true });
+    } catch (error) {
+      set({
+        gamesLoading: false,
+        gamesScanned: true,
+        lastError: {
+          title: "Ricerca giochi",
+          body: "Non è stato possibile leggere i giochi installati.",
+          details: error instanceof Error ? error.message : String(error),
+        },
+      });
+    }
   },
 
   optimizeGame: async (gameId) => {

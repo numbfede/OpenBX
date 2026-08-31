@@ -5,12 +5,16 @@ import { useAppStore } from "../store/useAppStore";
 
 export function GamesScreen() {
   const games = useAppStore((state) => state.games);
+  const gamesLoading = useAppStore((state) => state.gamesLoading);
+  const gamesScanned = useAppStore((state) => state.gamesScanned);
   const refreshGames = useAppStore((state) => state.refreshGames);
   const optimizeGame = useAppStore((state) => state.optimizeGame);
 
   useEffect(() => {
-    void refreshGames();
-  }, [refreshGames]);
+    if (!gamesScanned && !gamesLoading) {
+      void refreshGames();
+    }
+  }, [gamesScanned, gamesLoading, refreshGames]);
 
   return (
     <div className="mx-auto max-w-3xl py-8">
@@ -22,12 +26,14 @@ export function GamesScreen() {
             Cerchiamo i giochi su Steam, Epic, Ubisoft Connect, Xbox e nel menu Start. Applichiamo la preferenza GPU ad alte prestazioni e le ottimizzazioni Windows per i giochi in finestra.
           </p>
         </div>
-        <GlassButton variant="secondary" onClick={() => void refreshGames()}>
+        <GlassButton variant="secondary" disabled={gamesLoading} onClick={() => void refreshGames()}>
           Cerca giochi
         </GlassButton>
       </div>
       <div className="mt-8 space-y-3">
-        {games.length === 0 ? (
+        {gamesLoading ? (
+          <p className="text-sm text-[color:var(--muted)]">Cerchiamo i giochi installati…</p>
+        ) : games.length === 0 ? (
           <p className="text-sm text-[color:var(--muted)]">
             Nessun gioco trovato in locale. Steam, Epic, Ubisoft Connect, Xbox e il menu Start vengono controllati offline.
           </p>

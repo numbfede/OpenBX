@@ -13,8 +13,10 @@ use crate::paths::{append_log, data_dir, log_path};
 use crate::settings::{load_settings, save_settings};
 
 #[tauri::command]
-pub fn get_system_info() -> SystemInfo {
-    collect_system_info()
+pub async fn get_system_info() -> SystemInfo {
+    tauri::async_runtime::spawn_blocking(collect_system_info)
+        .await
+        .unwrap_or_else(|_| collect_system_info())
 }
 
 #[tauri::command]
@@ -28,8 +30,10 @@ pub fn save_settings_cmd(settings: AppSettings) -> AppResult<AppSettings> {
 }
 
 #[tauri::command]
-pub fn scan_system() -> ScanResult {
-    scan()
+pub async fn scan_system() -> ScanResult {
+    tauri::async_runtime::spawn_blocking(scan)
+        .await
+        .unwrap_or_else(|_| scan())
 }
 
 #[tauri::command]
@@ -53,8 +57,10 @@ pub fn apply_game_mode_cmd(app: AppHandle, preset: String) -> AppResult<Optimize
 }
 
 #[tauri::command]
-pub fn scan_games_cmd() -> Vec<GameEntry> {
-    scan_games()
+pub async fn scan_games_cmd() -> Vec<GameEntry> {
+    tauri::async_runtime::spawn_blocking(scan_games)
+        .await
+        .unwrap_or_default()
 }
 
 #[tauri::command]
@@ -111,6 +117,11 @@ pub fn open_external_url(url: String) -> AppResult<()> {
     if !allowed {
         return Err(crate::error::AppError::Message("Link non consentito.".into()));
     }
-    std::process::Command::new("explorer").arg(url).spawn()?;
+    std::process::Command::new("explorer")
+        .arg(url)
+        .stdin(std::process::Stdio::null())
+        .stdout(std::process::Stdio::null())
+        .stderr(std::process::Stdio::null())
+        .spawn()?;
     Ok(())
 }

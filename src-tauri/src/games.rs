@@ -4,7 +4,7 @@ use crate::error::AppResult;
 use crate::model::GameEntry;
 use crate::registry::{list_subkeys, read_string, write_string, Hive};
 use crate::tweaks::{dx_flag_enabled, dx_set};
-use crate::{detect, engine};
+use crate::engine;
 
 const GPU_PREF_PATH: &str = r"Software\Microsoft\DirectX\UserGpuPreferences";
 
@@ -50,7 +50,6 @@ pub fn optimize_game(_app: &tauri::AppHandle, game_id: &str) -> AppResult<crate:
     };
     write_string(Hive::Hkcu, GPU_PREF_PATH, &exe, &next)?;
     crate::paths::append_log(&format!("game gpu preference set for {}", game.name));
-    let _ = detect::collect_system_info();
     Ok(crate::model::OptimizeResult {
         backup_id: None,
         applied: 1,
@@ -313,11 +312,22 @@ fn scan_start_menu() -> Vec<GameEntry> {
 }
 
 fn walk_lnk(dir: &Path, known: &[&str], games: &mut Vec<GameEntry>) {
+    walk_lnk_depth(dir, known, games, 0);
+}
+
+fn walk_lnk_depth(dir: &Path, known: &[&str], games: &mut Vec<GameEntry>, depth: u8) {
+    if depth > 6 {
+        return;
+    }
+    let name = dir.file_name().and_then(|value| value.to_str()).unwrap_or_default();
+    if skip_scan_dir(name) {
+        return;
+    }
     let Ok(entries) = std::fs::read_dir(dir) else { return };
     for entry in entries.flatten() {
         let path = entry.path();
         if path.is_dir() {
-            walk_lnk(&path, known, games);
+            walk_lnk_depth(&path, known, games, depth + 1);
             continue;
         }
         if path.extension().and_then(|ext| ext.to_str()).map(|ext| ext.eq_ignore_ascii_case("lnk")) != Some(true) {
@@ -333,24 +343,112 @@ fn walk_lnk(dir: &Path, known: &[&str], games: &mut Vec<GameEntry>) {
             id: format!("startmenu-{}", stem.to_ascii_lowercase().replace(' ', "-")),
             name: stem.into(),
             source: "startmenu".into(),
-            exe_path: exe,
+            exe_path: exe.clone(),
             optimized,
-            applicable: true,
+            applicable: exe.is_some(),
         });
     }
 }
 
 fn resolve_lnk(path: &Path) -> Option<String> {
-    let script = format!(
-        "$s = (New-Object -ComObject WScript.Shell).CreateShortcut('{}'); $s.TargetPath",
-        path.display().to_string().replace('\\', "\\\\").replace('\'', "''")
-    );
-    let output = std::process::Command::new("powershell")
-        .args(["-NoProfile", "-Command", &script])
-        .output()
-        .ok()?;
-    let target = String::from_utf8_lossy(&output.stdout).trim().to_string();
-    if target.ends_with(".exe") { Some(target) } else { None }
+    let bytes = std::fs::read(path).ok()?;
+    parse_lnk_target(&bytes).filter(|target| target.to_ascii_lowercase().ends_with(".exe"))
+}
+
+fn parse_lnk_target(bytes: &[u8]) -> Option<String> {
+    parse_ms_shllink(bytes).or_else(|| extract_path_from_bytes(bytes))
+}
+
+fn parse_ms_shllink(bytes: &[u8]) -> Option<String> {
+    if bytes.len() < 0x4C {
+        return None;
+    }
+    let header_size = u32::from_le_bytes(bytes[0..4].try_into().ok()?);
+    if header_size != 0x4C {
+        return None;
+    }
+    let flags = u32::from_le_bytes(bytes[0x14..0x18].try_into().ok()?);
+    let mut offset = 0x4Cusize;
+    if flags & 0x1 != 0 {
+        if bytes.len() < offset + 2 {
+            return None;
+        }
+        let idlist_size = u16::from_le_bytes(bytes[offset..offset + 2].try_into().ok()?) as usize;
+        offset = offset.checked_add(2)?.checked_add(idlist_size)?;
+    }
+    if flags & 0x2 == 0 || bytes.len() < offset.checked_add(0x1C)? {
+        return None;
+    }
+    let info_header_size = u32::from_le_bytes(bytes[offset + 4..offset + 8].try_into().ok()?) as usize;
+    let info_flags = u32::from_le_bytes(bytes[offset + 8..offset + 12].try_into().ok()?);
+    if info_flags & 0x1 == 0 {
+        return None;
+    }
+    let ansi_off = u32::from_le_bytes(bytes[offset + 16..offset + 20].try_into().ok()?) as usize;
+    if let Some(path) = read_cstring(bytes, offset.checked_add(ansi_off)?) {
+        if path.to_ascii_lowercase().ends_with(".exe") {
+            return Some(path);
+        }
+    }
+    if info_header_size >= 0x24 && bytes.len() >= offset + 0x20 {
+        let unicode_off = u32::from_le_bytes(bytes[offset + 0x1C..offset + 0x20].try_into().ok()?) as usize;
+        if let Some(path) = read_utf16_cstring(bytes, offset.checked_add(unicode_off)?) {
+            if path.to_ascii_lowercase().ends_with(".exe") {
+                return Some(path);
+            }
+        }
+    }
+    None
+}
+
+fn read_cstring(bytes: &[u8], start: usize) -> Option<String> {
+    if start >= bytes.len() {
+        return None;
+    }
+    let end = bytes[start..].iter().position(|b| *b == 0).map(|i| start + i)?;
+    let text = std::str::from_utf8(&bytes[start..end]).ok()?.trim();
+    if text.is_empty() { None } else { Some(text.to_string()) }
+}
+
+fn read_utf16_cstring(bytes: &[u8], start: usize) -> Option<String> {
+    if start + 1 >= bytes.len() {
+        return None;
+    }
+    let mut units = Vec::new();
+    let mut i = start;
+    while i + 1 < bytes.len() {
+        let unit = u16::from_le_bytes([bytes[i], bytes[i + 1]]);
+        if unit == 0 {
+            break;
+        }
+        units.push(unit);
+        i += 2;
+    }
+    let text = String::from_utf16(&units).ok()?.trim().to_string();
+    if text.is_empty() { None } else { Some(text) }
+}
+
+fn extract_path_from_bytes(bytes: &[u8]) -> Option<String> {
+    let ascii = String::from_utf8_lossy(bytes);
+    ascii
+        .split(|ch: char| ch == '\0' || ch.is_control())
+        .find_map(find_exe_path)
+}
+
+fn find_exe_path(text: &str) -> Option<String> {
+    let lower = text.to_ascii_lowercase();
+    let end = lower.find(".exe").map(|index| index + 4)?;
+    let prefix = text.get(..end)?;
+    let bytes = prefix.as_bytes();
+    for i in (0..bytes.len().saturating_sub(3)).rev() {
+        if bytes[i].is_ascii_alphabetic()
+            && bytes[i + 1] == b':'
+            && (bytes[i + 2] == b'\\' || bytes[i + 2] == b'/')
+        {
+            return Some(prefix[i..].replace('/', "\\"));
+        }
+    }
+    None
 }
 
 fn parse_library_paths(vdf: &str) -> Vec<PathBuf> {
@@ -439,8 +537,18 @@ fn find_exe(dir: &Path, name: &str) -> Option<String> {
 }
 
 fn collect_exes(dir: &Path, depth: u8, max_depth: u8, out: &mut Vec<PathBuf>) {
+    if out.len() >= 80 {
+        return;
+    }
+    let name = dir.file_name().and_then(|value| value.to_str()).unwrap_or_default();
+    if skip_scan_dir(name) {
+        return;
+    }
     let Ok(entries) = std::fs::read_dir(dir) else { return };
     for entry in entries.flatten() {
+        if out.len() >= 80 {
+            return;
+        }
         let path = entry.path();
         if path.is_dir() {
             if depth < max_depth {
@@ -457,6 +565,31 @@ fn collect_exes(dir: &Path, depth: u8, max_depth: u8, out: &mut Vec<PathBuf>) {
         }
         out.push(path);
     }
+}
+
+fn skip_scan_dir(name: &str) -> bool {
+    let n = name.to_ascii_lowercase();
+    matches!(
+        n.as_str(),
+        "windows powershell"
+            | "powershell"
+            | "windows tools"
+            | "administrative tools"
+            | "system tools"
+            | "accessories"
+            | "redist"
+            | "_commonredist"
+            | "__installer"
+            | "easyanticheat"
+            | "battleye"
+            | "engine"
+            | "support"
+            | "logs"
+            | "shadercache"
+            | "crashpads"
+            | "cef"
+            | "dotnet"
+    ) || n.contains("redistributable")
 }
 
 fn compact(value: &str) -> String {
@@ -499,6 +632,16 @@ mod tests {
         let value = dx_set("GpuPreference=2;", "SwapEffectUpgradeEnable", "1");
         assert!(value.contains("GpuPreference=2"));
         assert!(dx_flag_enabled(&value, "SwapEffectUpgradeEnable"));
+    }
+
+    #[test]
+    fn lnk_bytes_can_yield_an_exe_path() {
+        let raw = b"xxxxC:\\Games\\RainbowSix\\RainbowSix.exe\0more";
+        assert_eq!(
+            extract_path_from_bytes(raw).as_deref(),
+            Some(r"C:\Games\RainbowSix\RainbowSix.exe")
+        );
+        assert!(parse_lnk_target(raw).unwrap().ends_with(".exe"));
     }
 
     #[test]

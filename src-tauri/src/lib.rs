@@ -1,3 +1,4 @@
+mod win_cmd;
 mod backup;
 mod commands;
 mod detect;

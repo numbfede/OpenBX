@@ -1,11 +1,7 @@
 use std::os::raw::{c_ulong, c_uchar};
-use std::process::Command;
-
-use serde::Deserialize;
-use sysinfo::System;
 
 use crate::model::{GpuVendor, SystemInfo};
-use crate::registry::{read_dword, Hive};
+use crate::registry::{read_dword, read_string, Hive};
 
 #[repr(C)]
 struct SystemPowerStatus {
@@ -17,89 +13,54 @@ struct SystemPowerStatus {
     battery_full_life_time: c_ulong,
 }
 
+#[repr(C)]
+struct MemoryStatusEx {
+    length: u32,
+    memory_load: u32,
+    total_phys: u64,
+    avail_phys: u64,
+    total_page_file: u64,
+    avail_page_file: u64,
+    total_virtual: u64,
+    avail_virtual: u64,
+    avail_extended_virtual: u64,
+}
+
 #[link(name = "kernel32")]
 extern "system" {
     fn GetSystemPowerStatus(status: *mut SystemPowerStatus) -> i32;
-}
-
-#[derive(Debug, Clone, Deserialize)]
-#[serde(rename_all = "camelCase")]
-struct WmiGpu {
-    name: Option<String>,
-    ram: Option<u64>,
-}
-
-#[derive(Debug, Deserialize)]
-#[serde(rename_all = "camelCase")]
-struct WmiSnapshot {
-    cpu: Option<String>,
-    gpus: Option<Vec<WmiGpu>>,
-    ram_gb: Option<u64>,
-    windows: Option<String>,
-    build: Option<String>,
-    chassis_types: Option<Vec<u32>>,
+    fn GlobalMemoryStatusEx(status: *mut MemoryStatusEx) -> i32;
 }
 
 pub fn collect_system_info() -> SystemInfo {
-    let wmi = query_wmi();
-    let mut sys = System::new_all();
-    sys.refresh_all();
-
-    let cpu = wmi
-        .as_ref()
-        .and_then(|item| item.cpu.clone())
-        .filter(|value| !value.trim().is_empty())
-        .unwrap_or_else(|| {
-            sys.cpus()
-                .first()
-                .map(|cpu| cpu.brand().trim().to_string())
-                .filter(|value| !value.is_empty())
-                .unwrap_or_else(|| "CPU sconosciuta".into())
-        });
-
-    let gpu = pick_primary_gpu(
-        wmi.as_ref()
-            .and_then(|item| item.gpus.clone())
-            .unwrap_or_default()
-            .into_iter()
-            .filter_map(|gpu| {
-                let name = gpu.name?.trim().to_string();
-                if name.is_empty() {
-                    None
-                } else {
-                    Some((name, gpu.ram.unwrap_or(0)))
-                }
-            })
-            .collect(),
+    let cpu = read_string(
+        Hive::Hklm,
+        r"HARDWARE\DESCRIPTION\System\CentralProcessor\0",
+        "ProcessorNameString",
     )
-    .or_else(primary_gpu_from_registry)
-    .unwrap_or_else(|| "GPU sconosciuta".into());
+    .filter(|value| !value.trim().is_empty())
+    .unwrap_or_else(|| "CPU sconosciuta".into());
 
+    let gpu = primary_gpu_from_registry().unwrap_or_else(|| "GPU sconosciuta".into());
     let gpu_vendor = vendor_from_name(&gpu);
-    let ram_gb = wmi
-        .as_ref()
-        .and_then(|item| item.ram_gb)
-        .unwrap_or_else(|| sys.total_memory() / 1024 / 1024 / 1024)
-        .max(1);
+    let ram_gb = total_ram_gb().max(1);
 
-    let windows = wmi
-        .as_ref()
-        .and_then(|item| item.windows.clone())
-        .unwrap_or_else(|| System::long_os_version().unwrap_or_else(|| "Windows".into()));
-
-    let windows_build = wmi
-        .as_ref()
-        .and_then(|item| item.build.clone())
-        .and_then(|value| value.parse().ok())
-        .unwrap_or_else(|| parse_build(System::os_version().unwrap_or_default()));
+    let product = read_string(Hive::Hklm, r"SOFTWARE\Microsoft\Windows NT\CurrentVersion", "ProductName")
+        .unwrap_or_else(|| "Windows".into());
+    let build = read_string(Hive::Hklm, r"SOFTWARE\Microsoft\Windows NT\CurrentVersion", "CurrentBuildNumber")
+        .unwrap_or_default();
+    let windows_build = parse_build(build);
+    let mut windows = if product.to_ascii_lowercase().contains("windows") {
+        product
+    } else {
+        format!("Windows {product}")
+    };
+    if windows_build >= 22000 {
+        windows = windows.replace("Windows 10", "Windows 11");
+    }
 
     let (on_ac_power, has_battery) = power_status();
-    let chassis_laptop = wmi
-        .as_ref()
-        .and_then(|item| item.chassis_types.clone())
-        .map(|types| types.iter().any(|code| matches!(code, 8 | 9 | 10 | 11 | 14 | 30 | 31 | 32)))
-        .unwrap_or(false);
-    let is_laptop = chassis_laptop || has_battery;
+    let is_laptop = has_battery;
 
     let hags_value = read_dword(
         Hive::Hklm,
@@ -122,6 +83,27 @@ pub fn collect_system_info() -> SystemInfo {
         is_dev: cfg!(debug_assertions),
     }
 }
+
+fn total_ram_gb() -> u64 {
+    unsafe {
+        let mut status = MemoryStatusEx {
+            length: std::mem::size_of::<MemoryStatusEx>() as u32,
+            memory_load: 0,
+            total_phys: 0,
+            avail_phys: 0,
+            total_page_file: 0,
+            avail_page_file: 0,
+            total_virtual: 0,
+            avail_virtual: 0,
+            avail_extended_virtual: 0,
+        };
+        if GlobalMemoryStatusEx(&mut status) == 0 || status.total_phys == 0 {
+            return 1;
+        }
+        (status.total_phys / 1024 / 1024 / 1024).max(1)
+    }
+}
+
 
 fn is_process_elevated() -> bool {
     #[cfg(windows)]
@@ -151,39 +133,6 @@ fn power_status() -> (bool, bool) {
         let has_battery = status.battery_flag != 128;
         (on_ac, has_battery)
     }
-}
-
-fn query_wmi() -> Option<WmiSnapshot> {
-    let script = r#"
-$ErrorActionPreference = 'Stop'
-$cpu = (Get-CimInstance Win32_Processor | Select-Object -First 1).Name
-$gpus = @(Get-CimInstance Win32_VideoController | ForEach-Object {
-  [pscustomobject]@{
-    name = $_.Name
-    ram = [uint64]$(if ($null -ne $_.AdapterRAM) { $_.AdapterRAM } else { 0 })
-  }
-})
-$ram = [uint64][math]::Round(((Get-CimInstance Win32_ComputerSystem).TotalPhysicalMemory) / 1GB)
-$os = Get-CimInstance Win32_OperatingSystem
-$chassis = @()
-try { $chassis = @((Get-CimInstance Win32_SystemEnclosure).ChassisTypes) } catch {}
-[pscustomobject]@{
-  cpu = "$cpu"
-  gpus = $gpus
-  ramGb = $ram
-  windows = $os.Caption
-  build = "$($os.BuildNumber)"
-  chassisTypes = $chassis
-} | ConvertTo-Json -Compress
-"#;
-    let output = Command::new("powershell")
-        .args(["-NoProfile", "-Command", script])
-        .output()
-        .ok()?;
-    if !output.status.success() {
-        return None;
-    }
-    serde_json::from_slice(&output.stdout).ok()
 }
 
 fn pick_primary_gpu(gpus: Vec<(String, u64)>) -> Option<String> {

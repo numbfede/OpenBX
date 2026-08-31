@@ -2,6 +2,15 @@
 
 All notable changes to OpenBX are documented in this file.
 
+## 0.1.5 — 2026-08-31
+
+### Fixed
+
+- Game scan no longer opens flashing PowerShell windows for Start Menu shortcuts
+- System detection no longer launches PowerShell/WMI, so startup does not freeze the UI
+- `powercfg` runs hidden, without a console window
+- Game search runs in the background and shows “Cerchiamo i giochi…” instead of locking the window
+
 ## 0.1.4 — 2026-08-31
 
 ### Added
