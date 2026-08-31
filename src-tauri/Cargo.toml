@@ -1,6 +1,6 @@
 [package]
 name = "openbx"
-version = "0.1.2"
+version = "0.1.3"
 description = "OpenBX — human-first Windows optimizer"
 authors = ["OpenBX"]
 edition = "2021"

@@ -2,6 +2,14 @@
 
 All notable changes to OpenBX are documented in this file.
 
+## 0.1.3 — 2026-08-31
+
+### Fixed
+
+- The Windows permission screen (**Autorizza**) now appears every time OpenBX starts without administrator rights, not only on first run
+- **OPTIMIZE MY PC** asks for permission again if the app is still running without it
+- Settings includes an Autorizza action when permission is missing
+
 ## 0.1.2 — 2026-08-31
 
 ### Fixed

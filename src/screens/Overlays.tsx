@@ -34,6 +34,7 @@ export function Overlays() {
   const refreshScan = useAppStore((state) => state.refreshScan);
   const updateSettings = useAppStore((state) => state.updateSettings);
   const relaunchElevated = useAppStore((state) => state.relaunchElevated);
+  const continueWithoutElevation = useAppStore((state) => state.continueWithoutElevation);
 
   if (overlay === "elevation") {
     return (
@@ -44,7 +45,7 @@ export function Overlays() {
           <p className="mt-3 text-[15px] leading-relaxed text-[color:var(--muted)]">
             {system?.isDev
               ? "Stai usando la modalità sviluppo. Non premere Autorizza: Windows chiuderebbe la connessione a localhost. Continua, oppure riapri il terminale come amministratore."
-              : "Per ottimizzare il PC serve il permesso di Windows. Non chiediamo password a OpenBX: è Windows che conferma."}
+              : "Alcune ottimizzazioni (GPU e file di sistema) richiedono il permesso di Windows. Senza Autorizza restano in attesa. Non chiediamo password a OpenBX: è Windows che conferma."}
           </p>
           <div className="mt-8 flex flex-col gap-3">
             {system?.isDev ? null : (
@@ -55,12 +56,9 @@ export function Overlays() {
             <GlassButton
               variant={system?.isDev ? "primary" : "ghost"}
               size={system?.isDev ? "lg" : "md"}
-              onClick={() => {
-                void updateSettings({ firstRunCompleted: system?.isElevated ? true : settings.firstRunCompleted });
-                setOverlay("firstrun");
-              }}
+              onClick={() => void continueWithoutElevation()}
             >
-              Continua
+              Continua senza permesso
             </GlassButton>
           </div>
         </GlassCard>

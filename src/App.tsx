@@ -33,7 +33,7 @@ export default function App() {
   }, [bootstrap]);
 
   return (
-    <div className="flex h-full overflow-hidden bg-canvas text-ink">
+    <div className="relative flex h-full overflow-hidden bg-canvas text-ink">
       <Sidebar current={screen} onNavigate={setScreen} />
       <div className="flex min-w-0 flex-1 flex-col">
         <TopBar subtitle={system && !system.isElevated ? "Permessi limitati · alcune modifiche restano in attesa" : titles[screen]} />
@@ -53,10 +53,10 @@ export default function App() {
               {screen === "settings" ? <SettingsScreen /> : null}
             </>
           )}
-          <Overlays />
-          <ToastViewport />
         </main>
       </div>
+      <Overlays />
+      <ToastViewport />
     </div>
   );
 }

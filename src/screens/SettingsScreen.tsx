@@ -6,7 +6,9 @@ import type { AppSettings } from "../services/types";
 
 export function SettingsScreen() {
   const settings = useAppStore((state) => state.settings);
+  const system = useAppStore((state) => state.system);
   const updateSettings = useAppStore((state) => state.updateSettings);
+  const setOverlay = useAppStore((state) => state.setOverlay);
   const exportLogs = useAppStore((state) => state.exportLogs);
 
   return (
@@ -38,6 +40,15 @@ export function SettingsScreen() {
         <Toggle label="Create backup automatically" checked={settings.createBackupAutomatically} onChange={(createBackupAutomatically) => void updateSettings({ createBackupAutomatically })} />
         <Toggle label="Ask before applying changes" checked={settings.askBeforeApplying} onChange={(askBeforeApplying) => void updateSettings({ askBeforeApplying })} />
         <Toggle label="Safe Mode" checked={settings.safeMode} onChange={(safeMode) => void updateSettings({ safeMode })} />
+        {system && !system.isElevated && !system.isDev ? (
+          <div className="flex items-center justify-between gap-4">
+            <div>
+              <p>Permesso Windows</p>
+              <p className="mt-1 text-sm text-[color:var(--muted)]">Serve per GPU scheduling e gestione file.</p>
+            </div>
+            <GlassButton onClick={() => setOverlay("elevation")}>Autorizza</GlassButton>
+          </div>
+        ) : null}
       </Group>
       <Group title="Advanced">
         <Toggle label="Developer mode" checked={settings.developerMode} onChange={(developerMode) => void updateSettings({ developerMode })} />

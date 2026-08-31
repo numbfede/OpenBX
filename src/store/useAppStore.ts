@@ -47,6 +47,8 @@ interface AppState {
   games: GameEntry[];
   selectedTweak: TweakState | null;
   pendingBackupId: string | null;
+  pendingOptimizeIds?: string[];
+  resumeOptimize: boolean;
   optimizeProgress: OptimizeEvent | null;
   lastResult: OptimizeResult | null;
   lastError: { title: string; body: string; details?: string } | null;
@@ -68,11 +70,16 @@ interface AppState {
   optimizeGame: (gameId: string) => Promise<void>;
   updateSettings: (patch: Partial<AppSettings>, options?: { allowDisableSafeMode?: boolean }) => Promise<void>;
   relaunchElevated: () => Promise<void>;
+  continueWithoutElevation: () => Promise<void>;
   exportLogs: () => Promise<void>;
   checkUpdate: () => Promise<void>;
   dismissUpdate: () => void;
   updateInfo: UpdateInfo | null;
   updateDismissed: boolean;
+}
+
+function needsWindowsPermission(system: SystemInfo | null): boolean {
+  return Boolean(system && !system.isElevated && !system.isDev);
 }
 
 function toastId(): string {
@@ -100,6 +107,8 @@ export const useAppStore = create<AppState>((set, get) => ({
   games: [],
   selectedTweak: null,
   pendingBackupId: null,
+  pendingOptimizeIds: undefined,
+  resumeOptimize: false,
   optimizeProgress: null,
   lastResult: null,
   lastError: null,
@@ -108,7 +117,20 @@ export const useAppStore = create<AppState>((set, get) => ({
   updateInfo: null,
   updateDismissed: false,
 
-  setScreen: (screen) => set({ screen, overlay: screen === get().screen ? get().overlay : null }),
+  setScreen: (screen) => {
+    const overlay = get().overlay;
+    const blocking =
+      overlay === "elevation" ||
+      overlay === "firstrun" ||
+      overlay === "optimize" ||
+      overlay === "confirm-optimize" ||
+      overlay === "confirm-restore" ||
+      overlay === "confirm-safemode";
+    set({
+      screen,
+      overlay: blocking ? overlay : screen === get().screen ? overlay : null,
+    });
+  },
   setOverlay: (overlay) => set({ overlay }),
   openTweak: (tweak) => set({ selectedTweak: tweak, overlay: "tweak-detail" }),
 
@@ -146,8 +168,11 @@ export const useAppStore = create<AppState>((set, get) => ({
         void get().checkUpdate();
       }
 
-      if (!system.isElevated && !settings.firstRunCompleted && !system.isDev) {
+      if (needsWindowsPermission(system)) {
         set({ overlay: "elevation", ready: true });
+        if (settings.firstRunCompleted) {
+          void get().refreshScan();
+        }
         return;
       }
       if (!settings.firstRunCompleted) {
@@ -176,18 +201,29 @@ export const useAppStore = create<AppState>((set, get) => ({
   },
 
   requestOptimize: (tweakIds) => {
+    if (needsWindowsPermission(get().system)) {
+      set({ overlay: "elevation", resumeOptimize: true, pendingOptimizeIds: tweakIds });
+      return;
+    }
     if (get().settings.askBeforeApplying) {
-      set({ overlay: "confirm-optimize", pendingBackupId: tweakIds?.[0] ?? null });
+      set({ overlay: "confirm-optimize", pendingOptimizeIds: tweakIds });
       return;
     }
     void get().runOptimize(tweakIds);
   },
 
   runOptimize: async (tweakIds) => {
-    set({ overlay: "optimize", optimizeProgress: { step: "scanning", message: "Scanning...", current: 0, total: 1 }, busy: true });
+    const ids = tweakIds ?? get().pendingOptimizeIds;
+    set({
+      overlay: "optimize",
+      pendingOptimizeIds: undefined,
+      resumeOptimize: false,
+      optimizeProgress: { step: "scanning", message: "Scanning...", current: 0, total: 1 },
+      busy: true,
+    });
     const unlisten = await onOptimizeProgress((event) => set({ optimizeProgress: event }));
     try {
-      const result = await api.optimize(tweakIds);
+      const result = await api.optimize(ids);
       const [scan, backups] = await Promise.all([api.scan(), api.listBackups()]);
       set({
         lastResult: result,
@@ -296,6 +332,27 @@ export const useAppStore = create<AppState>((set, get) => ({
     const settings = await api.saveSettings({ ...current, ...patch });
     document.documentElement.dataset.theme = settings.theme;
     set({ settings, overlay: get().overlay === "confirm-safemode" ? null : get().overlay });
+  },
+
+  continueWithoutElevation: async () => {
+    const { settings, resumeOptimize, pendingOptimizeIds, scan } = get();
+    if (resumeOptimize) {
+      set({ resumeOptimize: false });
+      if (settings.askBeforeApplying) {
+        set({ overlay: "confirm-optimize", pendingOptimizeIds });
+        return;
+      }
+      await get().runOptimize(pendingOptimizeIds);
+      return;
+    }
+    if (!settings.firstRunCompleted) {
+      set({ overlay: "firstrun" });
+      return;
+    }
+    if (!scan) {
+      await get().refreshScan();
+    }
+    set({ overlay: null });
   },
 
   relaunchElevated: async () => {
