@@ -19,7 +19,7 @@ export function GamesScreen() {
         <div>
           <h2 className="text-4xl font-medium tracking-tight">I tuoi giochi</h2>
           <p className="mt-3 max-w-xl text-[15px] text-[color:var(--muted)]">
-            Cerchiamo i giochi su Steam, Epic, Ubisoft Connect, Xbox e nel menu Start. Applichiamo solo la preferenza GPU documentata da Windows.
+            Cerchiamo i giochi su Steam, Epic, Ubisoft Connect, Xbox e nel menu Start. Applichiamo la preferenza GPU ad alte prestazioni e le ottimizzazioni Windows per i giochi in finestra.
           </p>
         </div>
         <GlassButton variant="secondary" onClick={() => void refreshGames()}>

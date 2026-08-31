@@ -20,8 +20,12 @@ pub fn scan() -> ScanResult {
 }
 
 fn summarize(tweaks: Vec<TweakState>) -> ScanResult {
-    let applicable = tweaks.iter().filter(|item| item.applicable).count() as u32;
-    let optimized = tweaks.iter().filter(|item| item.applicable && item.optimized).count() as u32;
+    let scored: Vec<&TweakState> = tweaks
+        .iter()
+        .filter(|item| item.listed && item.applicable && item.counts_toward_score)
+        .collect();
+    let applicable = scored.len() as u32;
+    let optimized = scored.iter().filter(|item| item.optimized).count() as u32;
     let categories = [
         (CategoryId::Performance, "Performance", "Rendi Windows più reattivo."),
         (CategoryId::Gaming, "Gaming", "Ottimizza Windows per giocare."),
@@ -31,7 +35,10 @@ fn summarize(tweaks: Vec<TweakState>) -> ScanResult {
     ]
     .into_iter()
     .map(|(id, title, description)| {
-        let group: Vec<_> = tweaks.iter().filter(|item| item.category == id && item.applicable).collect();
+        let group: Vec<_> = tweaks
+            .iter()
+            .filter(|item| item.category == id && item.listed && item.applicable && item.counts_toward_score)
+            .collect();
         CategorySummary {
             id,
             title: title.into(),
@@ -64,7 +71,7 @@ pub fn optimize(app: &AppHandle, tweak_ids: Option<Vec<String>>, kind: BackupKin
         .iter()
         .filter(|module| match &tweak_ids {
             Some(ids) => ids.iter().any(|id| id == module.id()),
-            None => true,
+            None => module.home_optimize(),
         })
         .filter(|module| {
             let detect = module.detect(&ctx);
@@ -285,6 +292,9 @@ mod tests {
             risk: crate::model::RiskLevel::Low,
             reversible: true,
             safe_mode_allowed: true,
+            listed: true,
+            counts_toward_score: true,
+            home_optimize: true,
             applicable: false,
             optimized: false,
             skipped_reason: Some("AMD only".into()),

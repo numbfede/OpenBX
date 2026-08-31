@@ -23,7 +23,7 @@ export function CategoriesScreen() {
             key={category.id}
             category={category}
             onClick={() => {
-              const first = scan.tweaks.find((tweak) => tweak.category === category.id && tweak.applicable);
+              const first = scan.tweaks.find((tweak) => tweak.category === category.id && tweak.applicable && tweak.listed);
               if (first) openTweak(first);
             }}
           />
@@ -32,7 +32,7 @@ export function CategoriesScreen() {
       {scan ? (
         <div className="space-y-3 pt-4">
           {scan.tweaks
-            .filter((tweak) => tweak.applicable)
+            .filter((tweak) => tweak.applicable && tweak.listed)
             .map((tweak) => (
               <button
                 key={tweak.id}
@@ -47,8 +47,8 @@ export function CategoriesScreen() {
                   <p className="mt-1 text-sm text-[color:var(--muted)]">{tweak.description}</p>
                 </div>
                 <StatusBadge
-                  tone={tweak.optimized ? "ready" : "warn"}
-                  label={tweak.optimized ? "OK" : "Dettagli"}
+                  tone={tweak.optimized ? "ready" : tweak.countsTowardScore ? "warn" : "muted"}
+                  label={tweak.optimized ? "OK" : tweak.countsTowardScore ? "Dettagli" : "Opzionale"}
                 />
               </button>
             ))}

@@ -3,7 +3,8 @@ use std::path::{Path, PathBuf};
 use crate::error::AppResult;
 use crate::model::GameEntry;
 use crate::registry::{list_subkeys, read_string, write_string, Hive};
-use crate::{engine, detect};
+use crate::tweaks::{dx_flag_enabled, dx_set};
+use crate::{detect, engine};
 
 const GPU_PREF_PATH: &str = r"Software\Microsoft\DirectX\UserGpuPreferences";
 
@@ -42,7 +43,12 @@ pub fn optimize_game(_app: &tauri::AppHandle, game_id: &str) -> AppResult<crate:
         });
     }
     let previous = read_string(Hive::Hkcu, GPU_PREF_PATH, &exe);
-    write_string(Hive::Hkcu, GPU_PREF_PATH, &exe, "GpuPreference=2;")?;
+    let next = {
+        let mut value = dx_set(previous.as_deref().unwrap_or(""), "GpuPreference", "2");
+        value = dx_set(&value, "SwapEffectUpgradeEnable", "1");
+        value
+    };
+    write_string(Hive::Hkcu, GPU_PREF_PATH, &exe, &next)?;
     crate::paths::append_log(&format!("game gpu preference set for {}", game.name));
     let _ = detect::collect_system_info();
     Ok(crate::model::OptimizeResult {
@@ -54,13 +60,13 @@ pub fn optimize_game(_app: &tauri::AppHandle, game_id: &str) -> AppResult<crate:
         score_after: 100,
         changes: vec![crate::model::ChangedTweak {
             id: game.id,
-            title: format!("Preferenza GPU ad alte prestazioni — {}", game.name),
+            title: format!("Preferenza GPU e giochi in finestra — {}", game.name),
             success: true,
             message: "Impostazione Windows Graphics documentata.".into(),
             technical: Some(crate::model::TweakTechnical {
                 registry_path: Some(format!(r"HKCU\{GPU_PREF_PATH}\{exe}")),
                 old_value: previous,
-                new_value: Some("GpuPreference=2;".into()),
+                new_value: Some(next.clone()),
                 powershell: None,
                 windows_api: Some("DirectX UserGpuPreferences".into()),
                 source: "Microsoft Graphics Settings".into(),
@@ -74,7 +80,7 @@ pub fn optimize_game(_app: &tauri::AppHandle, game_id: &str) -> AppResult<crate:
 
 fn is_gpu_optimized(exe: &str) -> bool {
     read_string(Hive::Hkcu, GPU_PREF_PATH, exe)
-        .map(|value| value.contains("GpuPreference=2"))
+        .map(|value| value.contains("GpuPreference=2") && dx_flag_enabled(&value, "SwapEffectUpgradeEnable"))
         .unwrap_or(false)
 }
 
@@ -486,6 +492,13 @@ mod tests {
             "Rainbow Six Siege"
         ));
         assert!(!names_match("Rainbow Six Siege", "Rainbow Six Extraction"));
+    }
+
+    #[test]
+    fn game_graphics_string_includes_windowed_upgrade() {
+        let value = dx_set("GpuPreference=2;", "SwapEffectUpgradeEnable", "1");
+        assert!(value.contains("GpuPreference=2"));
+        assert!(dx_flag_enabled(&value, "SwapEffectUpgradeEnable"));
     }
 
     #[test]

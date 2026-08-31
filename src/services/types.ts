@@ -48,6 +48,9 @@ export interface TweakState {
   risk: RiskLevel;
   reversible: boolean;
   safeModeAllowed: boolean;
+  listed: boolean;
+  countsTowardScore: boolean;
+  homeOptimize: boolean;
   applicable: boolean;
   optimized: boolean;
   skippedReason?: string | null;

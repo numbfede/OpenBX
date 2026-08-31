@@ -12,12 +12,12 @@ mod settings;
 mod tweaks;
 mod update;
 
-use tauri::Manager;
+use tauri::{include_image, Manager};
 
 use commands::{
-    apply_game_mode_cmd, export_logs, get_settings, get_system_info, list_backups_cmd, open_external_url,
-    optimize_game_cmd, optimize_system, relaunch_elevated, restore_backup, save_settings_cmd, scan_games_cmd,
-    scan_system, check_for_updates,
+    apply_game_mode_cmd, check_for_updates, export_logs, get_settings, get_system_info,
+    list_backups_cmd, open_external_url, optimize_game_cmd, optimize_system, relaunch_elevated,
+    restore_backup, save_settings_cmd, scan_games_cmd, scan_system,
 };
 use settings::load_settings;
 
@@ -28,6 +28,7 @@ pub fn run() {
             crate::paths::append_log("OpenBX started");
             let handle = app.handle().clone();
             let _ = tauri::tray::TrayIconBuilder::new()
+                .icon(include_image!("icons/tray.png"))
                 .tooltip("OpenBX")
                 .on_tray_icon_event(move |_tray, event| {
                     if let tauri::tray::TrayIconEvent::Click { .. } = event {

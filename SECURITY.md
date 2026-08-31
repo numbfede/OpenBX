@@ -39,7 +39,7 @@ We will acknowledge the report and work on a fix before any disclosure.
 
 ## Privileges
 
-Some keys live under `HKLM` and need administrator rights (`gpu_scheduling`, `ntfs_last_access`, `power_plan`). The app starts unelevated and can relaunch with a Windows UAC prompt. HKCU tweaks still work without elevation.
+Some keys live under `HKLM` and need administrator rights (`gpu_scheduling`, `gpu_scheduling_off`, `ntfs_last_access`, `power_plan`). The app starts unelevated and can relaunch with a Windows UAC prompt. HKCU tweaks still work without elevation.
 
 ## Rollback
 

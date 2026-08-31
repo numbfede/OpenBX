@@ -9,11 +9,14 @@ export function TweakDetailSheet({
   tweak,
   developerMode,
   onClose,
+  onApply,
 }: {
   tweak: TweakState;
   developerMode: boolean;
   onClose: () => void;
+  onApply?: (id: string) => void;
 }) {
+  const canApply = Boolean(onApply) && tweak.applicable && !tweak.optimized;
   return (
     <Modal onClose={onClose}>
       <GlassCard padding="lg" className="max-h-[80vh] overflow-y-auto">
@@ -24,7 +27,7 @@ export function TweakDetailSheet({
           </div>
           <StatusBadge
             tone={tweak.optimized ? "ready" : tweak.applicable ? "warn" : "muted"}
-            label={tweak.optimized ? "Ottimizzata" : tweak.applicable ? "Disponibile" : "Non applicabile"}
+            label={tweak.optimized ? "Ottimizzata" : tweak.applicable ? (tweak.countsTowardScore ? "Disponibile" : "Opzionale") : "Non applicabile"}
           />
         </div>
         <Section title="WHAT?" body={tweak.what} />
@@ -57,9 +60,19 @@ export function TweakDetailSheet({
             <p>Rollback: {tweak.technical.rollbackMethod}</p>
           </div>
         ) : null}
-        <GlassButton className="mt-6 w-full" variant="secondary" onClick={onClose}>
-          Chiudi
-        </GlassButton>
+        <div className="mt-6 flex flex-col gap-3">
+          {canApply ? (
+            <GlassButton
+              className="w-full"
+              onClick={() => onApply?.(tweak.id)}
+            >
+              {tweak.countsTowardScore ? "APPLICA" : "ATTIVA COMUNQUE"}
+            </GlassButton>
+          ) : null}
+          <GlassButton className="w-full" variant="secondary" onClick={onClose}>
+            Chiudi
+          </GlassButton>
+        </div>
       </GlassCard>
     </Modal>
   );

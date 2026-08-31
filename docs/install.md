@@ -7,7 +7,7 @@ Releases: [https://github.com/numbfede/OpenBX/releases](https://github.com/numbf
 ## Install (end users)
 
 1. Open **[Releases](https://github.com/numbfede/OpenBX/releases/latest)**.
-2. Download `OpenBX_<version>_x64-setup.exe` (example: `OpenBX_0.1.3_x64-setup.exe`).
+2. Download `OpenBX_<version>_x64-setup.exe` (example: `OpenBX_0.1.4_x64-setup.exe`).
 3. Run the setup file.
 4. If Windows SmartScreen appears, choose **More info** → **Run anyway** (the build is unsigned while the project is young).
 5. Finish the installer. It installs for the current Windows user.

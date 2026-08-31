@@ -30,6 +30,7 @@ export function Overlays() {
   const system = useAppStore((state) => state.system);
   const setOverlay = useAppStore((state) => state.setOverlay);
   const runOptimize = useAppStore((state) => state.runOptimize);
+  const requestOptimize = useAppStore((state) => state.requestOptimize);
   const runRestore = useAppStore((state) => state.runRestore);
   const refreshScan = useAppStore((state) => state.refreshScan);
   const updateSettings = useAppStore((state) => state.updateSettings);
@@ -191,6 +192,10 @@ export function Overlays() {
         tweak={selectedTweak}
         developerMode={settings.developerMode || settings.showTechnicalDetails}
         onClose={() => setOverlay(null)}
+        onApply={(id) => {
+          setOverlay(null);
+          requestOptimize([id]);
+        }}
       />
     );
   }

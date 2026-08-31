@@ -21,7 +21,7 @@ export function HomeScreen() {
       </div>
       <p className="mt-8 text-sm text-[color:var(--muted)]">
         {scan
-          ? `Abbiamo controllato ${plural(scan.applicable, "impostazione", "impostazioni")}.`
+          ? `Abbiamo controllato ${plural(scan.applicable, "impostazione Windows", "impostazioni Windows")}. Non è un aumento di FPS.`
           : "Premi OPTIMIZE dopo il controllo del PC."}
       </p>
       {scan ? (

@@ -8,7 +8,7 @@ use crate::registry::{
     delete_value, read_dword, read_string, snapshot_dword, snapshot_string, write_dword, write_string,
     Hive,
 };
-use crate::tweaks::{ntfs_last_access_disabled, win32, DetectResult, TweakModule};
+use crate::tweaks::{dx_flag_enabled, dx_set, ntfs_last_access_disabled, win32, DetectResult, TweakModule};
 
 const HIGH_PERFORMANCE: &str = "8c5e7fda-e8bf-4a96-9a85-a6e23a8c635c";
 const ULTIMATE: &str = "e9a42b02-d5df-448d-aa00-03f14749eb61";
@@ -18,7 +18,9 @@ pub fn all_modules() -> Vec<Box<dyn TweakModule>> {
     vec![
         Box::new(GameMode),
         Box::new(GameDvr),
+        Box::new(WindowedGames),
         Box::new(GpuScheduling),
+        Box::new(GpuSchedulingOff),
         Box::new(PowerPlan),
         Box::new(VisualAnimations),
         Box::new(Transparency),
@@ -110,33 +112,108 @@ struct GameDvr;
 impl TweakModule for GameDvr {
     fn id(&self) -> &'static str { "game_dvr" }
     fn category(&self) -> CategoryId { CategoryId::Gaming }
-    fn title(&self) -> &'static str { "Riduci registrazione in background" }
-    fn description(&self) -> &'static str { "Spegne la registrazione automatica mentre giochi." }
-    fn what(&self) -> &'static str { "Disabilita Game DVR / cattura in background di Windows." }
-    fn why(&self) -> &'static str { "La registrazione continua può usare GPU e disco senza che tu lo veda." }
+    fn title(&self) -> &'static str { "Spegni overlay e registrazione in background" }
+    fn description(&self) -> &'static str { "Disattiva Xbox Game Bar e la cattura automatica mentre giochi." }
+    fn what(&self) -> &'static str { "Spegne Game Bar, Game DVR e la registrazione in background di Windows." }
+    fn why(&self) -> &'static str { "Overlay e cattura usano GPU e CPU. In un gioco competitivo restano solo di mezzo." }
     fn sources(&self) -> Vec<SourceRef> {
         vec![src("Microsoft — Xbox Game Bar", "https://support.xbox.com/help/games-apps/game-bar/game-bar-overview")]
     }
     fn detect(&self, _ctx: &SystemInfo) -> DetectResult {
         let dvr = read_dword(Hive::Hkcu, r"System\GameConfigStore", "GameDVR_Enabled").unwrap_or(1);
         let capture = read_dword(Hive::Hkcu, r"Software\Microsoft\Windows\CurrentVersion\GameDVR", "AppCaptureEnabled").unwrap_or(1);
-        DetectResult::current(dvr == 0 && capture == 0, format!("{dvr}/{capture}"))
+        let bar = read_dword(Hive::Hkcu, r"Software\Microsoft\GameBar", "UseNexusForGameBarEnabled").unwrap_or(1);
+        DetectResult::current(dvr == 0 && capture == 0 && bar == 0, format!("{dvr}/{capture}/{bar}"))
     }
     fn apply(&self, _ctx: &SystemInfo, snapshot: &mut TweakSnapshot) -> AppResult<()> {
         snapshot.values = vec![
             SnapshotValue { key: "GameDVR_Enabled".into(), value: snapshot_dword(Hive::Hkcu, r"System\GameConfigStore", "GameDVR_Enabled") },
             SnapshotValue { key: "AppCaptureEnabled".into(), value: snapshot_dword(Hive::Hkcu, r"Software\Microsoft\Windows\CurrentVersion\GameDVR", "AppCaptureEnabled") },
+            SnapshotValue { key: "UseNexusForGameBarEnabled".into(), value: snapshot_dword(Hive::Hkcu, r"Software\Microsoft\GameBar", "UseNexusForGameBarEnabled") },
+            SnapshotValue { key: "ShowStartupPanel".into(), value: snapshot_dword(Hive::Hkcu, r"Software\Microsoft\GameBar", "ShowStartupPanel") },
         ];
         write_dword(Hive::Hkcu, r"System\GameConfigStore", "GameDVR_Enabled", 0)?;
-        write_dword(Hive::Hkcu, r"Software\Microsoft\Windows\CurrentVersion\GameDVR", "AppCaptureEnabled", 0)
+        write_dword(Hive::Hkcu, r"Software\Microsoft\Windows\CurrentVersion\GameDVR", "AppCaptureEnabled", 0)?;
+        write_dword(Hive::Hkcu, r"Software\Microsoft\GameBar", "UseNexusForGameBarEnabled", 0)?;
+        write_dword(Hive::Hkcu, r"Software\Microsoft\GameBar", "ShowStartupPanel", 0)
     }
     fn verify(&self, ctx: &SystemInfo) -> bool { self.detect(ctx).optimized }
     fn rollback(&self, snapshot: &TweakSnapshot) -> AppResult<()> {
         restore_dword(Hive::Hkcu, r"System\GameConfigStore", "GameDVR_Enabled", snapshot, "GameDVR_Enabled")?;
-        restore_dword(Hive::Hkcu, r"Software\Microsoft\Windows\CurrentVersion\GameDVR", "AppCaptureEnabled", snapshot, "AppCaptureEnabled")
+        restore_dword(Hive::Hkcu, r"Software\Microsoft\Windows\CurrentVersion\GameDVR", "AppCaptureEnabled", snapshot, "AppCaptureEnabled")?;
+        restore_dword(Hive::Hkcu, r"Software\Microsoft\GameBar", "UseNexusForGameBarEnabled", snapshot, "UseNexusForGameBarEnabled")?;
+        restore_dword(Hive::Hkcu, r"Software\Microsoft\GameBar", "ShowStartupPanel", snapshot, "ShowStartupPanel")
     }
     fn technical(&self, _ctx: &SystemInfo, old: Option<String>, new: Option<String>) -> TweakTechnical {
-        tech(r"HKCU\System\GameConfigStore\GameDVR_Enabled", old, new.or(Some("0".into())), "Registry", "Microsoft Game Bar / DVR", "Ripristina GameDVR_Enabled e AppCaptureEnabled", None)
+        tech(r"HKCU\System\GameConfigStore\GameDVR_Enabled", old, new.or(Some("0".into())), "Registry", "Microsoft Game Bar / DVR", "Ripristina Game DVR e Game Bar", None)
+    }
+}
+
+struct WindowedGames;
+impl TweakModule for WindowedGames {
+    fn id(&self) -> &'static str { "windowed_games" }
+    fn category(&self) -> CategoryId { CategoryId::Gaming }
+    fn title(&self) -> &'static str { "Ottimizza i giochi in finestra" }
+    fn description(&self) -> &'static str { "Usa le ottimizzazioni Windows per borderless e finestra, più il refresh variabile se il monitor lo supporta." }
+    fn what(&self) -> &'static str { "Attiva Optimizations for windowed games e Variable refresh rate nelle impostazioni grafica di Windows." }
+    fn why(&self) -> &'static str { "In finestra o senza bordi, Windows può presentare i frame con meno attesa. Utile su Siege e sulla maggior parte dei giochi moderni." }
+    fn sources(&self) -> Vec<SourceRef> {
+        vec![src(
+            "Microsoft — Optimizations for windowed games",
+            "https://devblogs.microsoft.com/directx/optimizations-for-windowed-games-in-windows-11/",
+        )]
+    }
+    fn detect(&self, ctx: &SystemInfo) -> DetectResult {
+        if ctx.windows_build < 22621 {
+            return DetectResult::skip("Serve Windows 11 22H2 o successivo per le ottimizzazioni dei giochi in finestra.");
+        }
+        let raw = read_string(Hive::Hkcu, r"Software\Microsoft\DirectX\UserGpuPreferences", "DirectXUserGlobalSettings")
+            .unwrap_or_default();
+        DetectResult::current(dx_flag_enabled(&raw, "SwapEffectUpgradeEnable"), raw)
+    }
+    fn apply(&self, _ctx: &SystemInfo, snapshot: &mut TweakSnapshot) -> AppResult<()> {
+        let path = r"Software\Microsoft\DirectX\UserGpuPreferences";
+        let previous = snapshot_string(Hive::Hkcu, path, "DirectXUserGlobalSettings");
+        snapshot.values.push(SnapshotValue {
+            key: "DirectXUserGlobalSettings".into(),
+            value: previous.clone(),
+        });
+        snapshot.values.push(SnapshotValue {
+            key: "SwapEffectUpgradeCache".into(),
+            value: snapshot_dword(Hive::Hkcu, r"Software\Microsoft\DirectX\GraphicsSettings", "SwapEffectUpgradeCache"),
+        });
+        let mut next = dx_set(previous.as_deref().unwrap_or(""), "SwapEffectUpgradeEnable", "1");
+        next = dx_set(&next, "VRROptimizeEnable", "1");
+        write_string(Hive::Hkcu, path, "DirectXUserGlobalSettings", &next)?;
+        write_dword(Hive::Hkcu, r"Software\Microsoft\DirectX\GraphicsSettings", "SwapEffectUpgradeCache", 1)
+    }
+    fn verify(&self, ctx: &SystemInfo) -> bool { self.detect(ctx).optimized }
+    fn rollback(&self, snapshot: &TweakSnapshot) -> AppResult<()> {
+        restore_string(
+            Hive::Hkcu,
+            r"Software\Microsoft\DirectX\UserGpuPreferences",
+            "DirectXUserGlobalSettings",
+            snapshot,
+            "DirectXUserGlobalSettings",
+        )?;
+        restore_dword(
+            Hive::Hkcu,
+            r"Software\Microsoft\DirectX\GraphicsSettings",
+            "SwapEffectUpgradeCache",
+            snapshot,
+            "SwapEffectUpgradeCache",
+        )
+    }
+    fn technical(&self, _ctx: &SystemInfo, old: Option<String>, new: Option<String>) -> TweakTechnical {
+        tech(
+            r"HKCU\Software\Microsoft\DirectX\UserGpuPreferences\DirectXUserGlobalSettings",
+            old,
+            new.or(Some("SwapEffectUpgradeEnable=1;VRROptimizeEnable=1;".into())),
+            "Registry",
+            "Microsoft Graphics Settings",
+            "Ripristina DirectXUserGlobalSettings",
+            None,
+        )
     }
 }
 
@@ -145,9 +222,11 @@ impl TweakModule for GpuScheduling {
     fn id(&self) -> &'static str { "gpu_scheduling" }
     fn category(&self) -> CategoryId { CategoryId::Performance }
     fn title(&self) -> &'static str { "Usa la GPU in modo più diretto" }
-    fn description(&self) -> &'static str { "Attiva lo scheduling GPU accelerato, se il PC lo supporta." }
+    fn description(&self) -> &'static str { "Opzionale. Lo scheduling GPU accelerato aiuta alcuni PC e su altri aumenta lo stutter. Non lo applichiamo in automatico." }
     fn what(&self) -> &'static str { "Abilita Hardware-accelerated GPU scheduling." }
-    fn why(&self) -> &'static str { "Su hardware compatibile può ridurre il lavoro della CPU per la grafica." }
+    fn why(&self) -> &'static str { "Microsoft lo documenta come riduzione del lavoro CPU sulla grafica. In giochi competitivi come Siege può introdurre scatti: per quello Competitive lo lascia spento." }
+    fn home_optimize(&self) -> bool { false }
+    fn counts_toward_score(&self) -> bool { false }
     fn sources(&self) -> Vec<SourceRef> {
         vec![src("Microsoft — Hardware-accelerated GPU scheduling", "https://devblogs.microsoft.com/directx/hardware-accelerated-gpu-scheduling/")]
     }
@@ -174,14 +253,51 @@ impl TweakModule for GpuScheduling {
     }
 }
 
+struct GpuSchedulingOff;
+impl TweakModule for GpuSchedulingOff {
+    fn id(&self) -> &'static str { "gpu_scheduling_off" }
+    fn category(&self) -> CategoryId { CategoryId::Performance }
+    fn title(&self) -> &'static str { "Non forzare lo scheduling GPU accelerato" }
+    fn description(&self) -> &'static str { "In Competitive lasciamo HAGS spento per ridurre lo stutter." }
+    fn what(&self) -> &'static str { "Imposta Hardware-accelerated GPU scheduling su Off." }
+    fn why(&self) -> &'static str { "Su alcuni giochi HAGS aumenta gli scatti anche con FPS stabili. Competitive non lo forza." }
+    fn listed(&self) -> bool { false }
+    fn counts_toward_score(&self) -> bool { false }
+    fn home_optimize(&self) -> bool { false }
+    fn sources(&self) -> Vec<SourceRef> {
+        vec![src("Microsoft — Hardware-accelerated GPU scheduling", "https://devblogs.microsoft.com/directx/hardware-accelerated-gpu-scheduling/")]
+    }
+    fn detect(&self, ctx: &SystemInfo) -> DetectResult {
+        if !ctx.hags_supported {
+            return DetectResult::skip("Questa GPU o questa versione di Windows non espone lo scheduling GPU accelerato.");
+        }
+        let value = read_dword(Hive::Hklm, r"SYSTEM\CurrentControlSet\Control\GraphicsDrivers", "HwSchMode").unwrap_or(1);
+        DetectResult::current(value != 2, value.to_string())
+    }
+    fn apply(&self, _ctx: &SystemInfo, snapshot: &mut TweakSnapshot) -> AppResult<()> {
+        snapshot.values.push(SnapshotValue {
+            key: "HwSchMode".into(),
+            value: snapshot_dword(Hive::Hklm, r"SYSTEM\CurrentControlSet\Control\GraphicsDrivers", "HwSchMode"),
+        });
+        write_dword(Hive::Hklm, r"SYSTEM\CurrentControlSet\Control\GraphicsDrivers", "HwSchMode", 1)
+    }
+    fn verify(&self, ctx: &SystemInfo) -> bool { self.detect(ctx).optimized }
+    fn rollback(&self, snapshot: &TweakSnapshot) -> AppResult<()> {
+        restore_dword(Hive::Hklm, r"SYSTEM\CurrentControlSet\Control\GraphicsDrivers", "HwSchMode", snapshot, "HwSchMode")
+    }
+    fn technical(&self, _ctx: &SystemInfo, old: Option<String>, new: Option<String>) -> TweakTechnical {
+        tech(r"HKLM\SYSTEM\CurrentControlSet\Control\GraphicsDrivers\HwSchMode", old, new.or(Some("1".into())), "Registry", "Microsoft HAGS", "Ripristina HwSchMode", None)
+    }
+}
+
 struct PowerPlan;
 impl TweakModule for PowerPlan {
     fn id(&self) -> &'static str { "power_plan" }
     fn category(&self) -> CategoryId { CategoryId::Performance }
     fn title(&self) -> &'static str { "Dai più energia alle prestazioni" }
-    fn description(&self) -> &'static str { "Usa il piano prestazioni di Windows, se ha senso su questo PC." }
-    fn what(&self) -> &'static str { "Imposta il piano alimentazione High Performance." }
-    fn why(&self) -> &'static str { "Windows può ridurre le prestazioni per risparmiare energia. Su desktop, o sul portatile collegato, il piano prestazioni è più adatto." }
+    fn description(&self) -> &'static str { "Usa Ultimate Performance se Windows lo offre, altrimenti il piano prestazioni." }
+    fn what(&self) -> &'static str { "Imposta il piano alimentazione Ultimate Performance, con fallback su High Performance." }
+    fn why(&self) -> &'static str { "Windows può ridurre CPU e GPU per risparmiare energia. Su desktop, o sul portatile collegato, il piano prestazioni tiene il sistema pronto." }
     fn sources(&self) -> Vec<SourceRef> {
         vec![src("Microsoft — powercfg", "https://learn.microsoft.com/windows-hardware/design/device-experiences/powercfg-command-line-options")]
     }
@@ -190,15 +306,14 @@ impl TweakModule for PowerPlan {
             return DetectResult::skip("Sul portatile a batteria non forziamo il piano prestazioni.");
         }
         let active = active_power_guid().unwrap_or_default();
-        let optimized = guid_eq(&active, HIGH_PERFORMANCE) || guid_eq(&active, ULTIMATE);
-        DetectResult::current(optimized, active)
+        DetectResult::current(is_performance_plan(&active), active)
     }
     fn apply(&self, _ctx: &SystemInfo, snapshot: &mut TweakSnapshot) -> AppResult<()> {
         snapshot.values.push(SnapshotValue {
             key: "scheme".into(),
             value: active_power_guid(),
         });
-        set_power_guid(HIGH_PERFORMANCE)
+        set_performance_plan()
     }
     fn verify(&self, ctx: &SystemInfo) -> bool { self.detect(ctx).optimized }
     fn rollback(&self, snapshot: &TweakSnapshot) -> AppResult<()> {
@@ -211,7 +326,7 @@ impl TweakModule for PowerPlan {
         set_power_guid(&guid)
     }
     fn technical(&self, _ctx: &SystemInfo, old: Option<String>, new: Option<String>) -> TweakTechnical {
-        tech("powercfg /getactivescheme", old, new.or(Some(HIGH_PERFORMANCE.into())), "powercfg", "Microsoft powercfg", "powercfg /setactive <guid precedente>", Some("powercfg /setactive 8c5e7fda-e8bf-4a96-9a85-a6e23a8c635c"))
+        tech("powercfg /getactivescheme", old, new.or(Some(ULTIMATE.into())), "powercfg", "Microsoft powercfg", "powercfg /setactive <guid precedente>", Some("powercfg -duplicatescheme e9a42b02-d5df-448d-aa00-03f14749eb61"))
     }
 }
 
@@ -481,6 +596,36 @@ fn is_guid(value: &str) -> bool {
     })
 }
 
+fn set_performance_plan() -> AppResult<()> {
+    if set_power_guid(ULTIMATE).is_ok() && is_performance_plan(&active_power_guid().unwrap_or_default()) {
+        return Ok(());
+    }
+    let output = Command::new("powercfg")
+        .args(["-duplicatescheme", ULTIMATE])
+        .output()
+        .map_err(|_| crate::error::AppError::AccessDenied)?;
+    if let Some(guid) = extract_guid(&String::from_utf8_lossy(&output.stdout)) {
+        if set_power_guid(&guid).is_ok() && is_performance_plan(&active_power_guid().unwrap_or_default()) {
+            return Ok(());
+        }
+    }
+    set_power_guid(HIGH_PERFORMANCE)
+}
+
+fn is_performance_plan(active: &str) -> bool {
+    if guid_eq(active, HIGH_PERFORMANCE) || guid_eq(active, ULTIMATE) {
+        return true;
+    }
+    let Some(output) = Command::new("powercfg").args(["/getactivescheme"]).output().ok() else {
+        return false;
+    };
+    let text = String::from_utf8_lossy(&output.stdout).to_ascii_lowercase();
+    text.contains("ultimate")
+        || text.contains("high performance")
+        || text.contains("prestazioni ultimate")
+        || text.contains("prestazioni elevate")
+}
+
 fn guid_eq(value: &str, expected: &str) -> bool {
     value.trim_matches(|c| c == '{' || c == '}').eq_ignore_ascii_case(expected)
 }
@@ -517,5 +662,30 @@ mod tests {
             is_dev: false,
         };
         assert_ne!(ctx.gpu_vendor, GpuVendor::Amd);
+    }
+
+    #[test]
+    fn windowed_games_need_windows_11_22h2() {
+        let mut ctx = SystemInfo {
+            cpu: "Intel".into(),
+            gpu: "NVIDIA GeForce RTX 3070 Ti".into(),
+            gpu_vendor: GpuVendor::Nvidia,
+            ram_gb: 16,
+            windows: "Windows 10".into(),
+            windows_build: 19045,
+            is_laptop: false,
+            on_ac_power: true,
+            is_elevated: true,
+            hags_supported: true,
+            is_dev: false,
+        };
+        let module = all_modules()
+            .into_iter()
+            .find(|item| item.id() == "windowed_games")
+            .unwrap();
+        assert!(!module.detect(&ctx).applicable);
+        ctx.windows_build = 22631;
+        ctx.windows = "Windows 11".into();
+        assert!(module.detect(&ctx).applicable);
     }
 }

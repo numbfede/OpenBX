@@ -6,7 +6,7 @@ const presets: { id: GameModePreset; title: string; body: string; kicker: string
   {
     id: "competitive",
     title: "Competitive",
-    body: "Massima priorità a performance e latenza.",
+    body: "Massima priorità a performance e meno overlay. Non forziamo lo scheduling GPU accelerato: su alcuni giochi aumenta lo stutter.",
     kicker: "( 01 )",
   },
   {
@@ -38,7 +38,7 @@ export function GameModeScreen() {
       <p className="text-[11px] uppercase tracking-[0.22em] text-[color:var(--faint)]">( 03 ) — Game Mode</p>
       <h2 className="mt-3 text-4xl font-medium tracking-tight">GAME MODE</h2>
       <p className="mt-3 max-w-xl text-[15px] text-[color:var(--muted)]">
-        Quattro scelte. Nessuna configurazione complicata.
+        Quattro scelte. Competitive spegne Game Bar e non attiva HAGS. Non è un pacchetto FPS.
       </p>
       <div className="mt-8 grid gap-3 sm:grid-cols-2">
         {presets.map((preset) => (

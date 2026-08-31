@@ -25,6 +25,15 @@ pub trait TweakModule: Send + Sync {
     fn safe_mode_allowed(&self) -> bool {
         true
     }
+    fn listed(&self) -> bool {
+        true
+    }
+    fn counts_toward_score(&self) -> bool {
+        true
+    }
+    fn home_optimize(&self) -> bool {
+        true
+    }
     fn sources(&self) -> Vec<SourceRef>;
     fn detect(&self, ctx: &SystemInfo) -> DetectResult;
     fn apply(&self, ctx: &SystemInfo, snapshot: &mut TweakSnapshot) -> AppResult<()>;
@@ -73,6 +82,9 @@ pub fn to_state(module: &dyn TweakModule, ctx: &SystemInfo) -> TweakState {
         risk: module.risk(),
         reversible: module.reversible(),
         safe_mode_allowed: module.safe_mode_allowed(),
+        listed: module.listed(),
+        counts_toward_score: module.counts_toward_score(),
+        home_optimize: module.home_optimize(),
         applicable: detect.applicable,
         optimized: detect.optimized,
         skipped_reason: detect.skipped_reason,
@@ -97,10 +109,62 @@ pub fn ntfs_last_access_disabled(value: u32) -> bool {
     matches!(value & 0x7FFF_FFFF, 1 | 3)
 }
 
+pub fn dx_flag_enabled(raw: &str, key: &str) -> bool {
+    dx_get(raw, key).as_deref() == Some("1")
+}
+
+pub fn dx_get(raw: &str, key: &str) -> Option<String> {
+    for part in raw.split(';') {
+        let part = part.trim();
+        if part.is_empty() {
+            continue;
+        }
+        let Some((name, value)) = part.split_once('=') else { continue };
+        if name.trim().eq_ignore_ascii_case(key) {
+            return Some(value.trim().to_string());
+        }
+    }
+    None
+}
+
+pub fn dx_set(raw: &str, key: &str, value: &str) -> String {
+    let mut parts: Vec<(String, String)> = raw
+        .split(';')
+        .filter_map(|part| {
+            let part = part.trim();
+            if part.is_empty() {
+                return None;
+            }
+            let (name, val) = part.split_once('=')?;
+            Some((name.trim().to_string(), val.trim().to_string()))
+        })
+        .collect();
+    if let Some(existing) = parts.iter_mut().find(|(name, _)| name.eq_ignore_ascii_case(key)) {
+        existing.1 = value.to_string();
+    } else {
+        parts.push((key.to_string(), value.to_string()));
+    }
+    let mut out = String::new();
+    for (name, val) in parts {
+        out.push_str(&name);
+        out.push('=');
+        out.push_str(&val);
+        out.push(';');
+    }
+    out
+}
+
 pub fn game_mode_bundle(preset: &str) -> &'static [&'static str] {
     match preset {
-        "competitive" => &["game_mode", "game_dvr", "focus_assist", "power_plan", "gpu_scheduling"],
-        "balanced" | "streaming" => &["game_mode"],
+        "competitive" => &[
+            "game_mode",
+            "game_dvr",
+            "focus_assist",
+            "power_plan",
+            "windowed_games",
+            "gpu_scheduling_off",
+        ],
+        "balanced" | "streaming" => &["game_mode", "windowed_games"],
         _ => &[],
     }
 }
@@ -123,5 +187,18 @@ mod tests {
         assert!(game_mode_bundle("streaming").len() < game_mode_bundle("competitive").len());
         assert_eq!(game_mode_bundle("default").len(), 0);
         assert!(game_mode_bundle("competitive").contains(&"game_mode"));
+        assert!(game_mode_bundle("competitive").contains(&"windowed_games"));
+        assert!(game_mode_bundle("competitive").contains(&"gpu_scheduling_off"));
+        assert!(!game_mode_bundle("competitive").contains(&"gpu_scheduling"));
+    }
+
+    #[test]
+    fn directx_preference_strings_merge() {
+        let merged = dx_set("GpuPreference=1;", "GpuPreference", "2");
+        let merged = dx_set(&merged, "SwapEffectUpgradeEnable", "1");
+        assert!(dx_flag_enabled(&merged, "SwapEffectUpgradeEnable"));
+        assert_eq!(dx_get(&merged, "GpuPreference").as_deref(), Some("2"));
+        assert!(merged.contains("GpuPreference=2"));
+        assert!(merged.ends_with(';'));
     }
 }

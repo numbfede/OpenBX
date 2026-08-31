@@ -2,6 +2,22 @@
 
 All notable changes to OpenBX are documented in this file.
 
+## 0.1.4 — 2026-08-31
+
+### Added
+
+- Windows 11 **Optimizations for windowed games** and variable refresh (`SwapEffectUpgradeEnable`, `VRROptimizeEnable`)
+- Game Bar overlay is turned off together with Game DVR
+- Per-game optimize now also enables windowed-game optimizations
+- Competitive Game Mode no longer enables Hardware-accelerated GPU scheduling (HAGS); it turns HAGS off when it was on
+- Desktop power plan prefers Ultimate Performance, with High Performance as fallback
+- Optional HAGS remains available from Details, excluded from the Home score
+
+### Fixed
+
+- Home copy states the score is Windows settings, not an FPS increase
+- Tray icon was created without an image (blank square in the notification area)
+
 ## 0.1.3 — 2026-08-31
 
 ### Fixed
