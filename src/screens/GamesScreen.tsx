@@ -19,7 +19,7 @@ export function GamesScreen() {
         <div>
           <h2 className="text-4xl font-medium tracking-tight">I tuoi giochi</h2>
           <p className="mt-3 max-w-xl text-[15px] text-[color:var(--muted)]">
-            Riconosciamo i giochi installati quando possibile. Applichiamo solo preferenze GPU documentate.
+            Cerchiamo i giochi su Steam, Epic, Ubisoft Connect, Xbox e nel menu Start. Applichiamo solo la preferenza GPU documentata da Windows.
           </p>
         </div>
         <GlassButton variant="secondary" onClick={() => void refreshGames()}>
@@ -29,7 +29,7 @@ export function GamesScreen() {
       <div className="mt-8 space-y-3">
         {games.length === 0 ? (
           <p className="text-sm text-[color:var(--muted)]">
-            Nessun gioco trovato in locale. Steam, Epic e il menu Start vengono controllati offline.
+            Nessun gioco trovato in locale. Steam, Epic, Ubisoft Connect, Xbox e il menu Start vengono controllati offline.
           </p>
         ) : (
           games.map((game) => (

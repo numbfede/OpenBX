@@ -22,11 +22,18 @@ extern "system" {
     fn GetSystemPowerStatus(status: *mut SystemPowerStatus) -> i32;
 }
 
+#[derive(Debug, Clone, Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct WmiGpu {
+    name: Option<String>,
+    ram: Option<u64>,
+}
+
 #[derive(Debug, Deserialize)]
 #[serde(rename_all = "camelCase")]
 struct WmiSnapshot {
     cpu: Option<String>,
-    gpus: Option<Vec<String>>,
+    gpus: Option<Vec<WmiGpu>>,
     ram_gb: Option<u64>,
     windows: Option<String>,
     build: Option<String>,
@@ -50,14 +57,23 @@ pub fn collect_system_info() -> SystemInfo {
                 .unwrap_or_else(|| "CPU sconosciuta".into())
         });
 
-    let gpu = wmi
-        .as_ref()
-        .and_then(|item| item.gpus.clone())
-        .unwrap_or_default()
-        .into_iter()
-        .find(|name| !name.to_lowercase().contains("microsoft basic"))
-        .or_else(|| primary_gpu_from_registry())
-        .unwrap_or_else(|| "GPU sconosciuta".into());
+    let gpu = pick_primary_gpu(
+        wmi.as_ref()
+            .and_then(|item| item.gpus.clone())
+            .unwrap_or_default()
+            .into_iter()
+            .filter_map(|gpu| {
+                let name = gpu.name?.trim().to_string();
+                if name.is_empty() {
+                    None
+                } else {
+                    Some((name, gpu.ram.unwrap_or(0)))
+                }
+            })
+            .collect(),
+    )
+    .or_else(primary_gpu_from_registry)
+    .unwrap_or_else(|| "GPU sconosciuta".into());
 
     let gpu_vendor = vendor_from_name(&gpu);
     let ram_gb = wmi
@@ -141,7 +157,12 @@ fn query_wmi() -> Option<WmiSnapshot> {
     let script = r#"
 $ErrorActionPreference = 'Stop'
 $cpu = (Get-CimInstance Win32_Processor | Select-Object -First 1).Name
-$gpus = @(Get-CimInstance Win32_VideoController | ForEach-Object { $_.Name })
+$gpus = @(Get-CimInstance Win32_VideoController | ForEach-Object {
+  [pscustomobject]@{
+    name = $_.Name
+    ram = [uint64]$(if ($null -ne $_.AdapterRAM) { $_.AdapterRAM } else { 0 })
+  }
+})
 $ram = [uint64][math]::Round(((Get-CimInstance Win32_ComputerSystem).TotalPhysicalMemory) / 1GB)
 $os = Get-CimInstance Win32_OperatingSystem
 $chassis = @()
@@ -165,6 +186,65 @@ try { $chassis = @((Get-CimInstance Win32_SystemEnclosure).ChassisTypes) } catch
     serde_json::from_slice(&output.stdout).ok()
 }
 
+fn pick_primary_gpu(gpus: Vec<(String, u64)>) -> Option<String> {
+    gpus.into_iter()
+        .filter(|(name, _)| !is_virtual_gpu(name))
+        .max_by_key(|(name, ram)| gpu_priority(name) + ram / (1024 * 1024))
+        .map(|(name, _)| name)
+}
+
+fn is_virtual_gpu(name: &str) -> bool {
+    let lower = name.to_ascii_lowercase();
+    [
+        "parsec",
+        "virtual display",
+        "virtual desktop",
+        "microsoft basic",
+        "microsoft remote",
+        "remote desktop",
+        "citrix",
+        "teamviewer",
+        "anydesk",
+        "rustdesk",
+        "vmware",
+        "virtualbox",
+        "hyper-v",
+        "hyperv",
+        "spacedesk",
+        "duet display",
+        "steam streaming",
+        "sunshine",
+        "moonlight",
+        "idd ",
+        "indirect display",
+        "usb display",
+        "usb-c virtual",
+        "meta virtual",
+        "oculus virtual",
+        "nvidia virtual",
+        "rdp",
+    ]
+    .iter()
+    .any(|needle| lower.contains(needle))
+}
+
+fn gpu_priority(name: &str) -> u64 {
+    let lower = name.to_ascii_lowercase();
+    if lower.contains("geforce") || lower.contains("rtx") || lower.contains("gtx") || lower.contains("quadro") {
+        3_000_000
+    } else if lower.contains("radeon") && (lower.contains("rx") || lower.contains("xt") || lower.contains("pro")) {
+        3_000_000
+    } else if lower.contains("arc") {
+        2_500_000
+    } else if lower.contains("nvidia") || lower.contains("amd") || lower.contains("radeon") {
+        2_000_000
+    } else if lower.contains("intel") {
+        1_000_000
+    } else {
+        100_000
+    }
+}
+
 fn primary_gpu_from_registry() -> Option<String> {
     use winreg::enums::{HKEY_LOCAL_MACHINE, KEY_READ};
     use winreg::RegKey;
@@ -175,17 +255,18 @@ fn primary_gpu_from_registry() -> Option<String> {
             KEY_READ,
         )
         .ok()?;
-    for i in 0..8 {
+    let mut found = Vec::new();
+    for i in 0..32 {
         let name = format!("{i:04}");
         if let Ok(key) = class.open_subkey_with_flags(&name, KEY_READ) {
             if let Ok(desc) = key.get_value::<String, _>("DriverDesc") {
-                if !desc.to_lowercase().contains("microsoft basic") {
-                    return Some(desc);
+                if !is_virtual_gpu(&desc) {
+                    found.push((desc, 0));
                 }
             }
         }
     }
-    None
+    pick_primary_gpu(found)
 }
 
 fn vendor_from_name(name: &str) -> GpuVendor {
@@ -218,5 +299,17 @@ mod tests {
         assert_eq!(vendor_from_name("NVIDIA GeForce RTX 4070"), GpuVendor::Nvidia);
         assert_eq!(vendor_from_name("AMD Radeon RX 7800 XT"), GpuVendor::Amd);
         assert_eq!(vendor_from_name("Intel Arc B580"), GpuVendor::Intel);
+    }
+
+    #[test]
+    fn parsec_and_virtual_adapters_are_ignored() {
+        assert!(is_virtual_gpu("Parsec Virtual Display Adapter"));
+        assert!(is_virtual_gpu("Microsoft Remote Display Adapter"));
+        let picked = pick_primary_gpu(vec![
+            ("Parsec Virtual Display Adapter".into(), 0),
+            ("NVIDIA GeForce RTX 5070 Ti".into(), 16 * 1024 * 1024 * 1024),
+            ("Intel UHD Graphics".into(), 128 * 1024 * 1024),
+        ]);
+        assert_eq!(picked.as_deref(), Some("NVIDIA GeForce RTX 5070 Ti"));
     }
 }

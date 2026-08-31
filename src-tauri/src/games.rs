@@ -2,7 +2,7 @@ use std::path::{Path, PathBuf};
 
 use crate::error::AppResult;
 use crate::model::GameEntry;
-use crate::registry::{read_string, write_string, Hive};
+use crate::registry::{list_subkeys, read_string, write_string, Hive};
 use crate::{engine, detect};
 
 const GPU_PREF_PATH: &str = r"Software\Microsoft\DirectX\UserGpuPreferences";
@@ -11,9 +11,11 @@ pub fn scan_games() -> Vec<GameEntry> {
     let mut games = Vec::new();
     games.extend(scan_steam());
     games.extend(scan_epic());
+    games.extend(scan_ubisoft());
+    games.extend(scan_xbox_games());
     games.extend(scan_start_menu());
     games.sort_by(|a, b| a.name.to_lowercase().cmp(&b.name.to_lowercase()));
-    games.dedup_by(|a, b| a.name.eq_ignore_ascii_case(&b.name));
+    games.dedup_by(|a, b| names_match(&a.name, &b.name));
     games
 }
 
@@ -85,6 +87,14 @@ fn scan_steam() -> Vec<GameEntry> {
     if let Ok(home) = std::env::var("ProgramFiles(x86)") {
         roots.push(PathBuf::from(home).join("Steam"));
     }
+    if let Some(path) = read_string(Hive::Hkcu, r"Software\Valve\Steam", "SteamPath") {
+        roots.push(PathBuf::from(path.replace('/', "\\")));
+    }
+    if let Some(path) = read_string(Hive::Hklm, r"SOFTWARE\WOW6432Node\Valve\Steam", "InstallPath") {
+        roots.push(PathBuf::from(path.replace('/', "\\")));
+    }
+    roots.sort();
+    roots.dedup();
     for root in roots {
         let vdf = root.join(r"steamapps\libraryfolders.vdf");
         let libraries = if vdf.exists() {
@@ -164,6 +174,100 @@ fn scan_epic() -> Vec<GameEntry> {
     games
 }
 
+fn scan_ubisoft() -> Vec<GameEntry> {
+    let mut games = Vec::new();
+    for path in [
+        r"SOFTWARE\WOW6432Node\Ubisoft\Launcher\Installs",
+        r"SOFTWARE\Ubisoft\Launcher\Installs",
+    ] {
+        for id in list_subkeys(Hive::Hklm, path) {
+            let key = format!("{path}\\{id}");
+            let Some(dir) = read_string(Hive::Hklm, &key, "InstallDir") else { continue };
+            let folder = PathBuf::from(dir.trim_end_matches(['\\', '/']));
+            if !folder.exists() {
+                continue;
+            }
+            let name = folder
+                .file_name()
+                .and_then(|value| value.to_str())
+                .unwrap_or("Ubisoft game")
+                .to_string();
+            if is_tool_app(&name) {
+                continue;
+            }
+            let exe = find_exe(&folder, &name);
+            let optimized = exe.as_ref().map(|path| is_gpu_optimized(path)).unwrap_or(false);
+            games.push(GameEntry {
+                id: format!("ubisoft-{id}"),
+                name,
+                source: "ubisoft".into(),
+                exe_path: exe,
+                optimized,
+                applicable: true,
+            });
+        }
+    }
+    for games_root in [
+        PathBuf::from(r"C:\Program Files (x86)\Ubisoft\Ubisoft Game Launcher\games"),
+        PathBuf::from(r"C:\Program Files\Ubisoft\Ubisoft Game Launcher\games"),
+    ] {
+        let Ok(entries) = std::fs::read_dir(games_root) else { continue };
+        for entry in entries.flatten() {
+            let folder = entry.path();
+            if !folder.is_dir() {
+                continue;
+            }
+            let name = entry.file_name().to_string_lossy().to_string();
+            if games.iter().any(|game| names_match(&game.name, &name)) {
+                continue;
+            }
+            let exe = find_exe(&folder, &name);
+            let optimized = exe.as_ref().map(|path| is_gpu_optimized(path)).unwrap_or(false);
+            games.push(GameEntry {
+                id: format!("ubisoft-{}", slug(&name)),
+                name,
+                source: "ubisoft".into(),
+                exe_path: exe,
+                optimized,
+                applicable: true,
+            });
+        }
+    }
+    games
+}
+
+fn scan_xbox_games() -> Vec<GameEntry> {
+    let mut games = Vec::new();
+    let mut roots = vec![PathBuf::from(r"C:\XboxGames")];
+    if let Ok(pf) = std::env::var("ProgramFiles") {
+        roots.push(PathBuf::from(pf).join("XboxGames"));
+    }
+    for root in roots {
+        let Ok(entries) = std::fs::read_dir(root) else { continue };
+        for entry in entries.flatten() {
+            let folder = entry.path();
+            if !folder.is_dir() {
+                continue;
+            }
+            let name = entry.file_name().to_string_lossy().to_string();
+            let content = folder.join("Content");
+            let search = if content.exists() { content } else { folder };
+            let exe = find_exe(&search, &name);
+            let applicable = exe.is_some();
+            let optimized = exe.as_ref().map(|path| is_gpu_optimized(path)).unwrap_or(false);
+            games.push(GameEntry {
+                id: format!("xbox-{}", slug(&name)),
+                name,
+                source: "xbox".into(),
+                exe_path: exe,
+                optimized,
+                applicable,
+            });
+        }
+    }
+    games
+}
+
 fn scan_start_menu() -> Vec<GameEntry> {
     let mut games = Vec::new();
     let known = [
@@ -182,6 +286,14 @@ fn scan_start_menu() -> Vec<GameEntry> {
         "Rocket League",
         "The Sims",
         "Elden Ring",
+        "Rainbow Six",
+        "RainbowSix",
+        "Assassin's Creed",
+        "Far Cry",
+        "Watch Dogs",
+        "The Division",
+        "Ghost Recon",
+        "For Honor",
     ];
     let mut roots = Vec::new();
     if let Some(roaming) = dirs::data_dir() {
@@ -268,36 +380,113 @@ fn kv(raw: &str, key: &str) -> Option<String> {
 
 fn is_tool_app(name: &str) -> bool {
     let lower = name.to_ascii_lowercase();
-    lower.contains("redistributable") || lower.contains("proton") || lower.contains("steamworks")
+    lower.contains("redistributable")
+        || lower.contains("proton")
+        || lower.contains("steamworks")
+        || lower.contains("easyanticheat")
+        || lower.contains("battleye")
+        || lower == "ubisoft connect"
+        || lower == "ubisoft game launcher"
+}
+
+fn is_skipped_exe(name: &str) -> bool {
+    let n = name.to_ascii_lowercase();
+    n.contains("unins")
+        || n.contains("crash")
+        || n.contains("easyanticheat")
+        || n.contains("battleye")
+        || n.contains("launcher")
+        || n.ends_with("_be")
+        || n.contains("redist")
+        || n.contains("setup")
+        || n.contains("vcredist")
+        || n.contains("unitycrash")
+        || n.contains("cefsharp")
+        || n.contains("report")
 }
 
 fn find_exe(dir: &Path, name: &str) -> Option<String> {
-    if !dir.exists() {
+    let mut exes = Vec::new();
+    collect_exes(dir, 0, 2, &mut exes);
+    if exes.is_empty() {
         return None;
     }
-    let mut exes = Vec::new();
-    if let Ok(entries) = std::fs::read_dir(dir) {
-        for entry in entries.flatten() {
-            let path = entry.path();
-            if path.extension().and_then(|ext| ext.to_str()).map(|ext| ext.eq_ignore_ascii_case("exe")) == Some(true) {
-                exes.push(path);
-            }
-        }
-    }
-    let needle = name.to_ascii_lowercase().replace(' ', "");
+    let needle = compact(name);
     exes.into_iter()
         .max_by_key(|path| {
-            let file = path.file_stem().and_then(|s| s.to_str()).unwrap_or_default().to_ascii_lowercase();
-            let compact = file.replace(' ', "");
-            u64::from(compact.contains(&needle) || needle.contains(&compact)) * 10
-                + path.metadata().map(|m| m.len()).unwrap_or(0)
+            let file = path
+                .file_stem()
+                .and_then(|s| s.to_str())
+                .unwrap_or_default()
+                .to_ascii_lowercase();
+            let compact_name = compact(&file);
+            let name_score = u64::from(
+                compact_name.contains(&needle)
+                    || needle.contains(&compact_name)
+                    || compact_name.contains("rainbowsix")
+                        && (needle.contains("siege") || needle.contains("rainbow")),
+            ) * 1_000_000;
+            let size = path.metadata().map(|m| m.len()).unwrap_or(0);
+            name_score + size
         })
         .map(|path| path.display().to_string())
+}
+
+fn collect_exes(dir: &Path, depth: u8, max_depth: u8, out: &mut Vec<PathBuf>) {
+    let Ok(entries) = std::fs::read_dir(dir) else { return };
+    for entry in entries.flatten() {
+        let path = entry.path();
+        if path.is_dir() {
+            if depth < max_depth {
+                collect_exes(&path, depth + 1, max_depth, out);
+            }
+            continue;
+        }
+        let Some(stem) = path.file_stem().and_then(|s| s.to_str()) else { continue };
+        if path.extension().and_then(|ext| ext.to_str()).map(|ext| ext.eq_ignore_ascii_case("exe")) != Some(true) {
+            continue;
+        }
+        if is_skipped_exe(stem) {
+            continue;
+        }
+        out.push(path);
+    }
+}
+
+fn compact(value: &str) -> String {
+    value
+        .to_ascii_lowercase()
+        .chars()
+        .filter(|ch| ch.is_ascii_alphanumeric())
+        .collect()
+}
+
+fn names_match(a: &str, b: &str) -> bool {
+    let left = compact(a).replace("tomclancys", "");
+    let right = compact(b).replace("tomclancys", "");
+    left == right
+}
+
+fn slug(value: &str) -> String {
+    value
+        .to_ascii_lowercase()
+        .chars()
+        .map(|ch| if ch.is_ascii_alphanumeric() { ch } else { '-' })
+        .collect()
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn siege_names_are_the_same_game() {
+        assert!(names_match(
+            "Tom Clancy's Rainbow Six Siege",
+            "Rainbow Six Siege"
+        ));
+        assert!(!names_match("Rainbow Six Siege", "Rainbow Six Extraction"));
+    }
 
     #[test]
     fn acf_and_vdf_parsers() {

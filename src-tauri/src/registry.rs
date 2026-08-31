@@ -25,6 +25,14 @@ pub fn read_dword(hive: Hive, path: &str, name: &str) -> Option<u32> {
         .and_then(|key| key.get_value::<u32, _>(name).ok())
 }
 
+pub fn list_subkeys(hive: Hive, path: &str) -> Vec<String> {
+    hive.open()
+        .open_subkey_with_flags(path, KEY_READ)
+        .ok()
+        .map(|key| key.enum_keys().filter_map(|name| name.ok()).collect())
+        .unwrap_or_default()
+}
+
 pub fn read_string(hive: Hive, path: &str, name: &str) -> Option<String> {
     hive.open()
         .open_subkey_with_flags(path, KEY_READ)

@@ -28,7 +28,7 @@ A ten-year-old should be able to use it. Technical details stay behind **Details
 - **Human categories** — Performance, Gaming, Memory, Startup, Windows. Not “registry / services / scheduler”
 - **Hardware-aware** — irrelevant tweaks (wrong GPU vendor, unsupported OS, laptop on battery) are hidden and excluded from the score
 - **Game Mode** — Competitive, Balanced, Streaming, or Default (restore)
-- **Game profiles** — local Steam / Epic / Start Menu detection. Per-game change is only the documented Windows GPU preference
+- **Game profiles** — local Steam / Epic / Ubisoft Connect / Xbox / Start Menu detection. Per-game change is only the documented Windows GPU preference
 - **Restore** — every change stores the previous value
 - **Safe Mode on by default** — only reversible, documented, low-risk modules
 - **Offline first** — the app does not need a server. Optional GitHub version check only.

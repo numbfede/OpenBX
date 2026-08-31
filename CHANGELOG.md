@@ -2,6 +2,17 @@
 
 All notable changes to OpenBX are documented in this file.
 
+## 0.1.2 — 2026-08-31
+
+### Fixed
+
+- GPU card no longer shows virtual adapters such as **Parsec Virtual Display Adapter**; OpenBX picks the real GPU (NVIDIA / AMD / Intel)
+- Rainbow Six Siege and other Ubisoft Connect games were missing because the scanner only looked at Steam, Epic, and a short Start Menu list
+
+### Added
+
+- Game scan now includes Ubisoft Connect, Xbox Games, Steam from the registry, and more Start Menu titles
+
 ## 0.1.1 — 2026-08-31
 
 ### Added
