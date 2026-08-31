@@ -10,6 +10,7 @@ import type {
   OptimizeResult,
   ScanResult,
   SystemInfo,
+  UpdateInfo,
 } from "./types";
 
 export function isTauri(): boolean {
@@ -39,6 +40,7 @@ export const api = {
   relaunchElevated: () => call<void>("relaunch_elevated"),
   exportLogs: () => call<string>("export_logs"),
   openUrl: (url: string) => call<void>("open_external_url", { url }),
+  checkForUpdates: () => call<UpdateInfo>("check_for_updates"),
 };
 
 export async function onOptimizeProgress(

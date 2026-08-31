@@ -27,6 +27,7 @@ We will acknowledge the report and work on a fix before any disclosure.
 - Writes only the registry / power-plan values listed in [docs/tweaks.md](docs/tweaks.md)
 - Stores backups and logs in `%LOCALAPPDATA%\OpenBX\`
 - Opens documentation URLs only from an allow-list of vendor domains
+- Optionally asks GitHub Releases for the latest version string (no hardware or personal data). Disable it in Settings.
 
 ## What it never does
 

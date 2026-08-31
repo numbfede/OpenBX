@@ -42,20 +42,25 @@ export function Overlays() {
           <p className="text-[11px] uppercase tracking-[0.2em] text-[color:var(--faint)]">Permesso Windows</p>
           <h2 className="mt-4 text-3xl font-medium">Windows deve autorizzare le modifiche</h2>
           <p className="mt-3 text-[15px] leading-relaxed text-[color:var(--muted)]">
-            Per ottimizzare il PC serve il permesso di Windows. Non chiediamo password a OpenBX: è Windows che conferma.
+            {system?.isDev
+              ? "Stai usando la modalità sviluppo. Non premere Autorizza: Windows chiuderebbe la connessione a localhost. Continua, oppure riapri il terminale come amministratore."
+              : "Per ottimizzare il PC serve il permesso di Windows. Non chiediamo password a OpenBX: è Windows che conferma."}
           </p>
           <div className="mt-8 flex flex-col gap-3">
-            <GlassButton size="lg" onClick={() => void relaunchElevated()}>
-              Autorizza
-            </GlassButton>
+            {system?.isDev ? null : (
+              <GlassButton size="lg" onClick={() => void relaunchElevated()}>
+                Autorizza
+              </GlassButton>
+            )}
             <GlassButton
-              variant="ghost"
+              variant={system?.isDev ? "primary" : "ghost"}
+              size={system?.isDev ? "lg" : "md"}
               onClick={() => {
                 void updateSettings({ firstRunCompleted: system?.isElevated ? true : settings.firstRunCompleted });
                 setOverlay("firstrun");
               }}
             >
-              Continua in anteprima
+              Continua
             </GlassButton>
           </div>
         </GlassCard>

@@ -103,6 +103,7 @@ pub fn collect_system_info() -> SystemInfo {
         on_ac_power,
         is_elevated: is_process_elevated(),
         hags_supported,
+        is_dev: cfg!(debug_assertions),
     }
 }
 

@@ -47,6 +47,7 @@ pub struct SystemInfo {
     pub on_ac_power: bool,
     pub is_elevated: bool,
     pub hags_supported: bool,
+    pub is_dev: bool,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -192,11 +193,12 @@ pub struct GameEntry {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
-#[serde(rename_all = "camelCase")]
+#[serde(rename_all = "camelCase", default)]
 pub struct AppSettings {
     pub start_with_windows: bool,
     pub minimize_to_tray: bool,
     pub notifications: bool,
+    pub check_for_updates: bool,
     pub theme: String,
     pub create_backup_automatically: bool,
     pub ask_before_applying: bool,
@@ -212,6 +214,7 @@ impl Default for AppSettings {
             start_with_windows: false,
             minimize_to_tray: false,
             notifications: true,
+            check_for_updates: true,
             theme: "dark".into(),
             create_backup_automatically: true,
             ask_before_applying: true,

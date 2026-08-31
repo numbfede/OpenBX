@@ -514,6 +514,7 @@ mod tests {
             on_ac_power: true,
             is_elevated: true,
             hags_supported: true,
+            is_dev: false,
         };
         assert_ne!(ctx.gpu_vendor, GpuVendor::Amd);
     }

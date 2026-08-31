@@ -1,7 +1,8 @@
-use tauri::AppHandle;
+use tauri::{AppHandle, Manager};
 
 use crate::backup::list_backups;
 use crate::detect::collect_system_info;
+use crate::elevate;
 use crate::engine::{apply_game_mode, optimize, restore, scan};
 use crate::error::AppResult;
 use crate::games::{optimize_game, scan_games};
@@ -62,19 +63,19 @@ pub fn optimize_game_cmd(app: AppHandle, game_id: String) -> AppResult<OptimizeR
 }
 
 #[tauri::command]
-pub fn relaunch_elevated() -> AppResult<()> {
-    let exe = std::env::current_exe()?;
-    std::process::Command::new("powershell")
-        .args([
-            "-NoProfile",
-            "-Command",
-            &format!(
-                "Start-Process -FilePath '{}' -Verb RunAs",
-                exe.display().to_string().replace('\'', "''")
-            ),
-        ])
-        .spawn()?;
-    append_log("relaunch elevated requested");
+pub fn relaunch_elevated(app: AppHandle) -> AppResult<()> {
+    if cfg!(debug_assertions) {
+        return Err(crate::error::AppError::Message(
+            "In sviluppo Windows blocca localhost dopo l'autorizzazione. Continua senza questo passo, oppure chiudi e riapri il terminale come amministratore. Con l'app installata da GitHub Releases, Autorizza funziona."
+                .into(),
+        ));
+    }
+
+    elevate::relaunch_self()?;
+    if let Some(window) = app.get_webview_window("main") {
+        let _ = window.hide();
+    }
+    crate::paths::append_log("relaunch elevated requested");
     std::process::exit(0);
 }
 
@@ -93,15 +94,21 @@ pub fn export_logs() -> AppResult<String> {
 }
 
 #[tauri::command]
+pub fn check_for_updates() -> crate::update::UpdateInfo {
+    crate::update::check()
+}
+
+#[tauri::command]
 pub fn open_external_url(url: String) -> AppResult<()> {
-    if !(url.starts_with("https://learn.microsoft.com")
+    let allowed = url.starts_with("https://learn.microsoft.com")
         || url.starts_with("https://support.microsoft.com")
         || url.starts_with("https://support.xbox.com")
         || url.starts_with("https://devblogs.microsoft.com")
         || url.starts_with("https://www.nvidia.com")
         || url.starts_with("https://www.amd.com")
-        || url.starts_with("https://www.intel.com"))
-    {
+        || url.starts_with("https://www.intel.com")
+        || url.starts_with("https://github.com/numbfede/OpenBX");
+    if !allowed {
         return Err(crate::error::AppError::Message("Link non consentito.".into()));
     }
     std::process::Command::new("explorer").arg(url).spawn()?;

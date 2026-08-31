@@ -12,6 +12,7 @@ import {
   type ScreenId,
   type SystemInfo,
   type TweakState,
+  type UpdateInfo,
 } from "../services/types";
 
 export type OverlayId =
@@ -68,6 +69,10 @@ interface AppState {
   updateSettings: (patch: Partial<AppSettings>, options?: { allowDisableSafeMode?: boolean }) => Promise<void>;
   relaunchElevated: () => Promise<void>;
   exportLogs: () => Promise<void>;
+  checkUpdate: () => Promise<void>;
+  dismissUpdate: () => void;
+  updateInfo: UpdateInfo | null;
+  updateDismissed: boolean;
 }
 
 function toastId(): string {
@@ -100,6 +105,8 @@ export const useAppStore = create<AppState>((set, get) => ({
   lastError: null,
   toasts: [],
   busy: false,
+  updateInfo: null,
+  updateDismissed: false,
 
   setScreen: (screen) => set({ screen, overlay: screen === get().screen ? get().overlay : null }),
   setOverlay: (overlay) => set({ overlay }),
@@ -135,8 +142,11 @@ export const useAppStore = create<AppState>((set, get) => ({
       ]);
       set({ system, settings, backups, desktopAvailable: true });
       document.documentElement.dataset.theme = settings.theme;
+      if (settings.checkForUpdates !== false) {
+        void get().checkUpdate();
+      }
 
-      if (!system.isElevated && !settings.firstRunCompleted) {
+      if (!system.isElevated && !settings.firstRunCompleted && !system.isDev) {
         set({ overlay: "elevation", ready: true });
         return;
       }
@@ -289,7 +299,20 @@ export const useAppStore = create<AppState>((set, get) => ({
   },
 
   relaunchElevated: async () => {
-    await api.relaunchElevated();
+    try {
+      await api.relaunchElevated();
+    } catch (error) {
+      set({
+        overlay: "error",
+        lastError: {
+          title: "Non serve chiudere l'app",
+          body:
+            error instanceof Error
+              ? error.message
+              : "Windows non ha autorizzato il riavvio. Puoi continuare e ottimizzare comunque le impostazioni consentite.",
+        },
+      });
+    }
   },
 
   exportLogs: async () => {
@@ -300,4 +323,23 @@ export const useAppStore = create<AppState>((set, get) => ({
       body: path,
     });
   },
+
+  checkUpdate: async () => {
+    if (get().settings.checkForUpdates === false) return;
+    try {
+      const updateInfo = await api.checkForUpdates();
+      set({ updateInfo });
+      if (updateInfo.available && get().settings.notifications) {
+        get().pushToast({
+          tone: "warn",
+          title: `Nuova versione ${updateInfo.latestVersion}`,
+          body: "Apri GitHub Releases per aggiornare l'app.",
+        });
+      }
+    } catch {
+      set({ updateInfo: null });
+    }
+  },
+
+  dismissUpdate: () => set({ updateDismissed: true }),
 }));

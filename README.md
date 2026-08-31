@@ -8,7 +8,7 @@ OpenBX is an open-source desktop app for Windows 10/11. It reads real system set
 
 No fake FPS. No invented percentages. No network tweaks. No telemetry. No account.
 
-[Features](#features) · [Download](#download) · [Build from source](#build-from-source) · [Safety](#safety) · [Contributing](#contributing)
+[Features](#features) · [Install](docs/install.md) · [Download](#download) · [Build from source](#build-from-source) · [Safety](#safety) · [Contributing](#contributing)
 
 ## Why it exists
 
@@ -31,7 +31,7 @@ A ten-year-old should be able to use it. Technical details stay behind **Details
 - **Game profiles** — local Steam / Epic / Start Menu detection. Per-game change is only the documented Windows GPU preference
 - **Restore** — every change stores the previous value
 - **Safe Mode on by default** — only reversible, documented, low-risk modules
-- **Offline first** — the app does not need a server
+- **Offline first** — the app does not need a server. Optional GitHub version check only.
 - **Privacy** — no accounts, no telemetry, no remote hardware inventory
 
 ## What it will never do
@@ -46,9 +46,19 @@ See [docs/tweaks.md](docs/tweaks.md) for every setting the app is allowed to cha
 
 ## Download
 
+**Use the installer.** Do not run the file in `target\debug`.
+
+1. Go to **[GitHub Releases](https://github.com/numbfede/OpenBX/releases/latest)**.
+2. Download `OpenBX_<version>_x64-setup.exe`.
+3. Run it, then open **OpenBX** from the Start menu.
+
+Full steps, updates, and what not to do: **[docs/install.md](docs/install.md)**.
+
+From 0.1.1 the app shows a banner if you are on an older release. If you still have **0.1.0**, update once by hand from that Releases page.
+
 Windows 10 version 2004 (build 19041) or later, or Windows 11.
 
-Build the installer from this repository:
+Developers who want to compile locally:
 
 ```bash
 npm install
@@ -57,7 +67,11 @@ npm run tauri build
 
 The NSIS setup file is written to `src-tauri/target/release/bundle/nsis/`.
 
-Some optimizations need administrator permission. OpenBX starts unelevated, explains why in plain language, and can relaunch with a Windows UAC prompt.
+Some optimizations need administrator permission. On the **installed** app, **Autorizza** is the normal Windows UAC prompt.
+
+Do **not** click that prompt during `npm run tauri dev`: Windows blocks elevated apps from reaching the local Vite server (`ERR_CONNECTION_REFUSED`). Press **Continua** instead.
+
+The MSVC message `Creazione della libreria ...dll.lib` is a harmless linker note, not a crash.
 
 ## Build from source
 

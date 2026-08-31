@@ -2,6 +2,7 @@ import { useEffect } from "react";
 import { Sidebar } from "./components/Sidebar";
 import { ToastViewport } from "./components/Toast";
 import { TopBar } from "./components/TopBar";
+import { UpdateBanner } from "./components/UpdateBanner";
 import { CategoriesScreen } from "./screens/CategoriesScreen";
 import { GameModeScreen } from "./screens/GameModeScreen";
 import { GamesScreen } from "./screens/GamesScreen";
@@ -36,6 +37,7 @@ export default function App() {
       <Sidebar current={screen} onNavigate={setScreen} />
       <div className="flex min-w-0 flex-1 flex-col">
         <TopBar subtitle={system && !system.isElevated ? "Permessi limitati · alcune modifiche restano in attesa" : titles[screen]} />
+        <UpdateBanner />
         <main className="relative min-h-0 flex-1 overflow-y-auto px-8">
           {!ready ? (
             <div className="grid h-full place-items-center text-sm text-[color:var(--muted)]">

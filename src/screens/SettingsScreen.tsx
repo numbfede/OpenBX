@@ -19,6 +19,7 @@ export function SettingsScreen() {
         <Toggle label="Start with Windows" checked={settings.startWithWindows} onChange={(startWithWindows) => void updateSettings({ startWithWindows })} />
         <Toggle label="Minimize to tray" checked={settings.minimizeToTray} onChange={(minimizeToTray) => void updateSettings({ minimizeToTray })} />
         <Toggle label="Notifications" checked={settings.notifications} onChange={(notifications) => void updateSettings({ notifications })} />
+        <Toggle label="Check for updates on GitHub" checked={settings.checkForUpdates} onChange={(checkForUpdates) => void updateSettings({ checkForUpdates })} />
         <Row label="Theme">
           <div className="flex gap-2">
             {(["dark", "light"] as AppSettings["theme"][]).map((theme) => (

@@ -2,6 +2,18 @@
 
 All notable changes to OpenBX are documented in this file.
 
+## 0.1.1 — 2026-08-31
+
+### Added
+
+- In-app notice when a newer GitHub Release exists (optional, off if you disable “Check for updates”)
+- Install and update guide: [docs/install.md](docs/install.md)
+
+### Fixed
+
+- Elevating the **dev** build no longer opens PowerShell and then a localhost error page
+- Installed app relaunches with a normal Windows UAC prompt, without a terminal window
+
 ## 0.1.0 — 2026-08-31
 
 ### Added

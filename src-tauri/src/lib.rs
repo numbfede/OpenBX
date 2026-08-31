@@ -1,6 +1,7 @@
 mod backup;
 mod commands;
 mod detect;
+mod elevate;
 mod engine;
 mod error;
 mod games;
@@ -9,13 +10,14 @@ mod paths;
 mod registry;
 mod settings;
 mod tweaks;
+mod update;
 
 use tauri::Manager;
 
 use commands::{
     apply_game_mode_cmd, export_logs, get_settings, get_system_info, list_backups_cmd, open_external_url,
     optimize_game_cmd, optimize_system, relaunch_elevated, restore_backup, save_settings_cmd, scan_games_cmd,
-    scan_system,
+    scan_system, check_for_updates,
 };
 use settings::load_settings;
 
@@ -59,7 +61,8 @@ pub fn run() {
             optimize_game_cmd,
             relaunch_elevated,
             export_logs,
-            open_external_url
+            open_external_url,
+            check_for_updates
         ])
         .run(tauri::generate_context!())
         .expect("OpenBX failed to start");

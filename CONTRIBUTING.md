@@ -45,7 +45,9 @@ User-facing strings currently live in Italian inside the Rust catalog. If you ad
 
 ## Development setup
 
-See the [README](README.md#build-from-source).
+Install and update instructions for testers: [docs/install.md](docs/install.md).
+
+See the [README](README.md#build-from-source) for the compiler toolchain.
 
 ## Code of conduct
 

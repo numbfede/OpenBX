@@ -28,6 +28,14 @@ export interface SystemInfo {
   onAcPower: boolean;
   isElevated: boolean;
   hagsSupported: boolean;
+  isDev: boolean;
+}
+
+export interface UpdateInfo {
+  currentVersion: string;
+  latestVersion?: string | null;
+  releaseUrl?: string | null;
+  available: boolean;
 }
 
 export interface TweakState {
@@ -125,6 +133,7 @@ export interface AppSettings {
   startWithWindows: boolean;
   minimizeToTray: boolean;
   notifications: boolean;
+  checkForUpdates: boolean;
   theme: "dark" | "light";
   createBackupAutomatically: boolean;
   askBeforeApplying: boolean;
@@ -138,6 +147,7 @@ export const DEFAULT_SETTINGS: AppSettings = {
   startWithWindows: false,
   minimizeToTray: false,
   notifications: true,
+  checkForUpdates: true,
   theme: "dark",
   createBackupAutomatically: true,
   askBeforeApplying: true,
